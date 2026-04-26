@@ -1,10 +1,11 @@
 import { useRef, useCallback, Fragment, useState } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
 import type { Scenario, ScenarioLock } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
+import CopyRowDialog from '@/components/CopyRowDialog'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
@@ -87,6 +88,7 @@ export default function BudgetMatrix({
 
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [distributeTarget, setDistributeTarget] = useState<AccountRow | null>(null)
+  const [copyTarget, setCopyTarget] = useState<AccountRow | null>(null)
 
   const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
 
@@ -256,13 +258,22 @@ export default function BudgetMatrix({
                               <span className="text-gray-700">{account.name}</span>
                             </div>
                             {!isLocked && futurePeriods.length > 0 && (
-                              <button
-                                onClick={() => setDistributeTarget(account)}
-                                title="Fördela årsbelopp"
-                                className="invisible group-hover:visible shrink-0 p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                              >
-                                <Calculator size={12} />
-                              </button>
+                              <div className="invisible group-hover:visible flex items-center gap-0.5 shrink-0">
+                                <button
+                                  onClick={() => setDistributeTarget(account)}
+                                  title="Fördela årsbelopp"
+                                  className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                >
+                                  <Calculator size={12} />
+                                </button>
+                                <button
+                                  onClick={() => setCopyTarget(account)}
+                                  title="Kopiera rad"
+                                  className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                >
+                                  <Copy size={12} />
+                                </button>
+                              </div>
                             )}
                           </div>
                         </td>
@@ -372,6 +383,22 @@ export default function BudgetMatrix({
             }
           }}
           onClose={() => setDistributeTarget(null)}
+        />
+      )}
+
+      {copyTarget && (
+        <CopyRowDialog
+          sourceAccount={copyTarget}
+          accounts={accounts}
+          futurePeriods={futurePeriods}
+          entries={entries}
+          scenarioStartYear={scenario.start_year}
+          onCopy={(targetAccountId, amounts) => {
+            for (const { year, month, amount } of amounts) {
+              onCellChange(targetAccountId, year, month, amount)
+            }
+          }}
+          onClose={() => setCopyTarget(null)}
         />
       )}
     </div>
