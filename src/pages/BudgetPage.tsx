@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
+import { useRole } from '@/hooks/useRole'
 import BudgetMatrix from '@/components/BudgetMatrix'
 import NewScenarioDialog from '@/components/NewScenarioDialog'
 import { cn } from '@/lib/utils'
@@ -13,6 +14,7 @@ export default function BudgetPage() {
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null)
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null)
   const [showNewScenario, setShowNewScenario] = useState(false)
+  const { isAdmin } = useRole()
   const [userId, setUserId] = useState<string>('')
 
   useEffect(() => {
@@ -135,13 +137,15 @@ export default function BudgetPage() {
                 </option>
               ))}
             </select>
-            <button
-              onClick={() => setShowNewScenario(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 whitespace-nowrap"
-            >
-              <Plus size={14} />
-              Nytt
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setShowNewScenario(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 whitespace-nowrap"
+              >
+                <Plus size={14} />
+                Nytt
+              </button>
+            )}
           </div>
         </div>
 
