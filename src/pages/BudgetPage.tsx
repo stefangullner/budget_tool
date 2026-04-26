@@ -70,6 +70,7 @@ export default function BudgetPage() {
     endYear: number,
     endMonth: number,
     copyFromId?: number,
+    _companyIds?: number[],
   ) {
     if (!selectedCompanyId) return
     const newScenario = await createScenario(

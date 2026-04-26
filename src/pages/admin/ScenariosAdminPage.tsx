@@ -80,24 +80,30 @@ export default function ScenariosAdminPage() {
 
   async function handleCreateScenario(
     name: string, startYear: number, startMonth: number,
-    endYear: number, endMonth: number, copyFromId?: number,
+    endYear: number, endMonth: number, copyFromId?: number, companyIds?: number[],
   ) {
-    if (!selectedCompanyId) return
-    const { data } = await supabase
-      .from('scenarios')
-      .insert({
-        company_id: selectedCompanyId,
-        name, start_year: startYear, start_month: startMonth,
-        end_year: endYear, end_month: endMonth,
-        is_approved: false, created_by: userId,
-      })
-      .select()
-      .single()
+    const targets = companyIds && companyIds.length > 0 ? companyIds : [selectedCompanyId!]
 
-    if (data && copyFromId) {
-      const { data: sourceEntries } = await supabase
-        .from('budget_entries').select('*').eq('scenario_id', copyFromId)
-      if (sourceEntries?.length) {
+    // Fetch source entries once if copying
+    let sourceEntries: Record<string, unknown>[] = []
+    if (copyFromId) {
+      const { data } = await supabase.from('budget_entries').select('*').eq('scenario_id', copyFromId)
+      sourceEntries = data ?? []
+    }
+
+    await Promise.all(targets.map(async (companyId) => {
+      const { data } = await supabase
+        .from('scenarios')
+        .insert({
+          company_id: companyId,
+          name, start_year: startYear, start_month: startMonth,
+          end_year: endYear, end_month: endMonth,
+          is_approved: false, created_by: userId,
+        })
+        .select()
+        .single()
+
+      if (data && sourceEntries.length > 0) {
         await supabase.from('budget_entries').insert(
           sourceEntries.map((e) => ({
             scenario_id: data.id, account_id: e.account_id,
@@ -106,7 +112,8 @@ export default function ScenariosAdminPage() {
           }))
         )
       }
-    }
+    }))
+
     setShowNewScenario(false)
     refetch()
   }
@@ -322,6 +329,8 @@ export default function ScenariosAdminPage() {
       {showNewScenario && (
         <NewScenarioDialog
           scenarios={scenarios}
+          companies={companies}
+          defaultCompanyId={selectedCompanyId ?? undefined}
           onClose={() => setShowNewScenario(false)}
           onCreate={handleCreateScenario}
         />
