@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, LayoutList, Table2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
 import { useRole } from '@/hooks/useRole'
 import BudgetMatrix from '@/components/BudgetMatrix'
+import BudgetOverview from '@/components/BudgetOverview'
 import NewScenarioDialog from '@/components/NewScenarioDialog'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
@@ -14,6 +15,7 @@ export default function BudgetPage() {
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null)
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null)
   const [showNewScenario, setShowNewScenario] = useState(false)
+  const [view, setView] = useState<'matrix' | 'overview'>('matrix')
   const { isAdmin } = useRole()
   const [userId, setUserId] = useState<string>('')
 
@@ -100,6 +102,28 @@ export default function BudgetPage() {
           <h1 className="text-xl font-semibold text-gray-900">Budget</h1>
           <p className="text-sm text-gray-500 mt-0.5">Mata in budget per konto och kostnadsställe</p>
         </div>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setView('matrix')}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors',
+              view === 'matrix' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            <Table2 size={13} />
+            Matris
+          </button>
+          <button
+            onClick={() => setView('overview')}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors',
+              view === 'overview' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            <LayoutList size={13} />
+            Översikt
+          </button>
+        </div>
       </div>
 
       {/* Company tabs */}
@@ -169,8 +193,32 @@ export default function BudgetPage() {
         </div>
       </div>
 
+      {/* Overview */}
+      {view === 'overview' && (
+        !selectedScenario ? (
+          <div className="text-center py-20 text-gray-400 text-sm">
+            Välj ett scenario för att se översikten.
+          </div>
+        ) : accounts.length === 0 ? (
+          <div className="text-center py-20 text-gray-400 text-sm">
+            Inga budgeterbara konton konfigurerade.
+          </div>
+        ) : (
+          <BudgetOverview
+            scenario={selectedScenario}
+            accounts={accounts}
+            costCenters={costCenters}
+            locks={locks}
+            onSelectKS={(id) => {
+              setSelectedCostCenterId(id)
+              setView('matrix')
+            }}
+          />
+        )
+      )}
+
       {/* Matrix */}
-      {!selectedScenario || !selectedCostCenterId ? (
+      {view === 'matrix' && (!selectedScenario || !selectedCostCenterId ? (
         <div className="text-center py-20 text-gray-400 text-sm">
           {scenarios.length === 0
             ? 'Skapa ett scenario för att börja budgetera.'
@@ -200,7 +248,7 @@ export default function BudgetPage() {
           }
           onToggleLock={() => toggleLock(selectedCostCenterId, userId)}
         />
-      )}
+      ))}
 
       {showNewScenario && (
         <NewScenarioDialog
