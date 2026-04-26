@@ -5,6 +5,14 @@ import DashboardPage from '@/pages/DashboardPage'
 import AccountConfigPage from '@/pages/AccountConfigPage'
 import BudgetPage from '@/pages/BudgetPage'
 import Layout from '@/components/Layout'
+import AdminGuard from '@/components/AdminGuard'
+import AdminLayout from '@/pages/admin/AdminLayout'
+import UsersPage from '@/pages/admin/UsersPage'
+import ScenariosAdminPage from '@/pages/admin/ScenariosAdminPage'
+import AccountsAdminPage from '@/pages/admin/AccountsAdminPage'
+import CostCentersPage from '@/pages/admin/CostCentersPage'
+import DeadlinesPage from '@/pages/admin/DeadlinesPage'
+import SyncPage from '@/pages/admin/SyncPage'
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -28,6 +36,21 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/budget" element={<BudgetPage />} />
         <Route path="/accounts" element={<AccountConfigPage />} />
+        <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
+        <Route path="/admin/*" element={
+          <AdminGuard>
+            <AdminLayout>
+              <Routes>
+                <Route path="users"        element={<UsersPage />} />
+                <Route path="scenarios"    element={<ScenariosAdminPage />} />
+                <Route path="accounts"     element={<AccountsAdminPage />} />
+                <Route path="cost-centers" element={<CostCentersPage />} />
+                <Route path="deadlines"    element={<DeadlinesPage />} />
+                <Route path="sync"         element={<SyncPage />} />
+              </Routes>
+            </AdminLayout>
+          </AdminGuard>
+        } />
       </Routes>
     </Layout>
   )

@@ -1,18 +1,19 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Building2, BookOpen, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Building2, BookOpen, ShieldCheck, LogOut } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useRole } from '@/hooks/useRole'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { to: '/dashboard', label: 'Översikt', icon: LayoutDashboard },
-  { to: '/budget', label: 'Budget', icon: Building2 },
-  { to: '/accounts', label: 'Kontokonfiguration', icon: BookOpen },
-  { to: '/settings', label: 'Inställningar', icon: Settings },
+  { to: '/dashboard', label: 'Översikt',  icon: LayoutDashboard },
+  { to: '/budget',    label: 'Budget',    icon: Building2 },
+  { to: '/accounts',  label: 'Konton',    icon: BookOpen },
 ]
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { session, signOut } = useAuth()
+  const { isAdmin } = useRole()
   const location = useLocation()
 
   return (
@@ -39,6 +40,26 @@ export default function Layout({ children }: { children: ReactNode }) {
               {label}
             </Link>
           ))}
+
+          {isAdmin && (
+            <>
+              <div className="pt-3 pb-1 px-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Admin</p>
+              </div>
+              <Link
+                to="/admin/users"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                  location.pathname.startsWith('/admin')
+                    ? 'bg-brand-50 text-brand-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-100'
+                )}
+              >
+                <ShieldCheck size={16} />
+                Administration
+              </Link>
+            </>
+          )}
         </nav>
 
         <div className="px-3 py-4 border-t border-gray-100">
