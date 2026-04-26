@@ -194,6 +194,7 @@ export default function BudgetPage() {
           locks={locks}
           saving={saving}
           costCenterId={selectedCostCenterId}
+          companyId={selectedCompanyId!}
           onCellChange={(accountId, year, month, amount) =>
             upsertEntry(accountId, year, month, amount, userId)
           }

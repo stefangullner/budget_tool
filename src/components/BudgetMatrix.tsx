@@ -1,9 +1,10 @@
 import { useRef, useCallback, Fragment, useState } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
 import type { Scenario, ScenarioLock } from '@/types'
+import DistributeDialog from '@/components/DistributeDialog'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
@@ -17,6 +18,7 @@ interface Props {
   locks: ScenarioLock[]
   saving: Set<string>
   costCenterId: number
+  companyId: number
   onCellChange: (accountId: number, year: number, month: number, amount: number) => void
   onToggleLock: () => void
 }
@@ -40,6 +42,7 @@ export default function BudgetMatrix({
   locks,
   saving,
   costCenterId,
+  companyId,
   onCellChange,
   onToggleLock,
 }: Props) {
@@ -83,6 +86,9 @@ export default function BudgetMatrix({
   })).filter((g) => g.rows.length > 0)
 
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const [distributeTarget, setDistributeTarget] = useState<AccountRow | null>(null)
+
+  const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
 
   function toggleSection(section: string) {
     setCollapsedSections((prev) => {
@@ -242,10 +248,23 @@ export default function BudgetMatrix({
                     const globalRowIdx = accounts.indexOf(account)
                     const rowTotal = getRowTotal(account.id)
                     return (
-                      <tr key={account.id} className="border-t border-gray-100 hover:bg-gray-50/50">
+                      <tr key={account.id} className="group border-t border-gray-100 hover:bg-gray-50/50">
                         <td className="sticky left-0 bg-white px-3 py-1 z-10 hover:bg-gray-50/50">
-                          <span className="font-mono text-gray-400 mr-2">{account.account_number}</span>
-                          <span className="text-gray-700">{account.name}</span>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="min-w-0">
+                              <span className="font-mono text-gray-400 mr-2">{account.account_number}</span>
+                              <span className="text-gray-700">{account.name}</span>
+                            </div>
+                            {!isLocked && futurePeriods.length > 0 && (
+                              <button
+                                onClick={() => setDistributeTarget(account)}
+                                title="Fördela årsbelopp"
+                                className="invisible group-hover:visible shrink-0 p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                              >
+                                <Calculator size={12} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                         {periods.map(({ year, month }, periodIdx) => {
                           const isPast = isPastPeriod(year, month)
@@ -338,6 +357,22 @@ export default function BudgetMatrix({
           </tbody>
         </table>
       </div>
+
+      {distributeTarget && (
+        <DistributeDialog
+          account={distributeTarget}
+          scenario={scenario}
+          costCenterId={costCenterId}
+          companyId={companyId}
+          futurePeriods={futurePeriods}
+          onDistribute={(amounts) => {
+            for (const { year, month, amount } of amounts) {
+              onCellChange(distributeTarget.id, year, month, amount)
+            }
+          }}
+          onClose={() => setDistributeTarget(null)}
+        />
+      )}
     </div>
   )
 }
