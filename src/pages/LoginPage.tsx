@@ -1,24 +1,28 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
+type Mode = 'login' | 'signup'
+
 export default function LoginPage() {
+  const [mode, setMode] = useState<Mode>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleMicrosoftLogin = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: {
-        scopes: 'email profile openid',
-        redirectTo: window.location.origin,
-      },
-    })
+
+    const { error } = mode === 'login'
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password })
+
     if (error) {
       setError(error.message)
-      setLoading(false)
     }
+    setLoading(false)
   }
 
   return (
@@ -35,26 +39,56 @@ export default function LoginPage() {
           </div>
         )}
 
-        <button
-          onClick={handleMicrosoftLogin}
-          disabled={loading}
-          className="w-full flex items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <MicrosoftIcon />
-          {loading ? 'Loggar in...' : 'Logga in med Microsoft'}
-        </button>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              E-post
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Lösenord
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading
+              ? 'Vänta...'
+              : mode === 'login' ? 'Logga in' : 'Skapa konto'}
+          </button>
+        </form>
+
+        <p className="mt-6 text-center text-sm text-gray-500">
+          {mode === 'login' ? 'Inget konto?' : 'Har du redan konto?'}{' '}
+          <button
+            onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null) }}
+            className="text-brand-600 hover:underline font-medium"
+          >
+            {mode === 'login' ? 'Skapa konto' : 'Logga in'}
+          </button>
+        </p>
       </div>
     </div>
-  )
-}
-
-function MicrosoftIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 21 21" fill="none">
-      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
-      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-    </svg>
   )
 }

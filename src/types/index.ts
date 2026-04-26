@@ -38,7 +38,10 @@ export interface Scenario {
   id: number
   company_id: number
   name: string
-  year: number
+  start_year: number
+  start_month: number
+  end_year: number
+  end_month: number
   is_approved: boolean
   created_by: string
   created_at: string
@@ -49,8 +52,29 @@ export interface BudgetEntry {
   scenario_id: number
   account_id: number
   cost_center_id: number
+  year: number
   month: number
   amount: number
+  updated_by: string
+  updated_at: string
+}
+
+export interface ScenarioLock {
+  scenario_id: number
+  cost_center_id: number
+  locked_by: string
+  locked_at: string
+}
+
+export interface Actual {
+  id: number
+  company_id: number
+  account_id: number
+  cost_center_id: number
+  year: number
+  month: number
+  amount: number
+  synced_at: string
 }
 
 export interface UserProfile {

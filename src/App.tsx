@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
+import AccountConfigPage from '@/pages/AccountConfigPage'
+import BudgetPage from '@/pages/BudgetPage'
 import Layout from '@/components/Layout'
 
 export default function App() {
@@ -24,6 +26,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/budget" element={<BudgetPage />} />
+        <Route path="/accounts" element={<AccountConfigPage />} />
       </Routes>
     </Layout>
   )

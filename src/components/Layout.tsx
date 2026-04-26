@@ -1,12 +1,13 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Building2, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Building2, BookOpen, Settings, LogOut } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/dashboard', label: 'Översikt', icon: LayoutDashboard },
   { to: '/budget', label: 'Budget', icon: Building2 },
+  { to: '/accounts', label: 'Kontokonfiguration', icon: BookOpen },
   { to: '/settings', label: 'Inställningar', icon: Settings },
 ]
 
