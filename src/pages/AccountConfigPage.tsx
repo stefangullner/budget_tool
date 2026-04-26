@@ -105,7 +105,7 @@ export default function AccountConfigPage() {
     setAccounts((prev) =>
       prev.map((a) =>
         a.id === account.id
-          ? { ...a, config: { ...(a.config ?? { id: 0, account_id: a.id, is_calculated: false, formula: null, display_order: 0, section: null, notes: null }), section: section || null } }
+          ? { ...a, config: { ...(a.config ?? { id: 0, account_id: a.id, is_budgetable: false, is_calculated: false, formula: null, display_order: 0, section: null, notes: null }), section: section || null } }
           : a,
       ),
     )
