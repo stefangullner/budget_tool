@@ -1,7 +1,7 @@
 # Projektplan — On Via Budget Tool
 
-**Senast uppdaterad:** 2026-04-24  
-**Status:** Fas 0 — Planering
+**Senast uppdaterad:** 2026-04-26  
+**Status:** Fas 3 — Admin & användarhantering
 
 ---
 
@@ -11,73 +11,120 @@ Bygga ett internt webbaserat budgetverktyg för On Via med fyra bolag som stödj
 - Budgetering per konto, kostnadsställe och månad
 - Utfallsjämförelse mot faktiska siffror från Fortnox
 - Prognoser med flera scenarier
-- Beräknade rader (lönebikostnader, SLP m.m.)
-- Rollbaserad åtkomst (bolag, kostnadsställe, admin)
+- Rollbaserad åtkomst (admin, bolagsansvarig, KS-ansvarig)
+- Export av budget till Fabric för vidare analys
+
+**Stack:** React + Vite + TypeScript + Tailwind + Supabase + Vercel + GitHub
 
 ---
 
-## Faser
+## Status per fas
 
-### Fas 0 — Planering *(pågående)*
-- [x] Kravanalys och funktionsöversikt
-- [x] Val av teknisk stack och lagring
-- [ ] Datamodell (tabellstruktur i Fabric Warehouse)
-- [ ] UI-val (ramverk, designsystem)
-- [ ] Arkitekturbeslut (API-lager, auth-flöde)
+### ✅ Fas 1 — Grund & datamodell
+- [x] React-app med routing, auth-guard, Supabase-klient
+- [x] Supabase-schema: companies, cost_centers, accounts, account_configs, scenarios, budget_entries, scenario_locks, actuals, user_profiles, user_roles, sync_log
+- [x] RLS-policies för alla tabeller
+- [x] 4 bolag inlagda (id 1–4)
+- [x] 56 kostnadsställen med region-struktur
+- [x] 3 001 konton synkade från Fortnox via Fabric-notebook
+- [x] Admin-användare skapad (stefan.gullner@onvia.se)
 
-### Fas 1 — Grund & datamodell
-- [ ] Skapa Fabric Warehouse för budget-data
-- [ ] Skapa grundtabeller: bolag, kostnadsställen, konton, kontokonfiguration
-- [ ] Migrera/synka kontoplaner från Fortnox-data
-- [ ] Autentisering via Entra ID mot Fabric
+### ✅ Fas 2 — Kontokonfiguration
+- [x] AccountConfigPage: toggle is_budgetable, sektion per konto, filter, synkstatus
+- [x] account_configs skapade för alla konton
 
-### Fas 2 — Budgetinmatning
-- [ ] UI för kontoplanshantening (kuration — vilka konton är budgeterbara)
-- [ ] Definiera beräknade rader med formler (lönebikostnad, SLP)
-- [ ] Budgetinmatning per konto × kostnadsställe × månad
-- [ ] Validering och autosave
+### ✅ Fas 3 — Budgetinmatning
+- [x] Flexibla scenarier med datumspann (start/slut år+månad, ej låst till kalenderår)
+- [x] BudgetPage med bolagsflikar, scenarioval, KS-väljare
+- [x] BudgetMatrix: sektionsgruppering, autosave per cell, tangentbordsnavigation
+- [x] Historiska månader visas som skrivskyddade (från actuals-tabellen)
+- [x] Lås/lås upp per KS direkt i matrisen
+- [x] Scenarioskapande begränsat till admins (RLS + UI)
+- [x] Kopiering från befintligt scenario vid skapande
 
-### Fas 3 — Utfall & jämförelse
-- [ ] Koppla mot utfallsdata från Fortnox bronslager
-- [ ] Budget vs utfall per månad, kvartal, helår
-- [ ] Avvikelseanalys (kr och %)
-- [ ] Trafikljusstatus per kostnadsställe
+---
 
-### Fas 4 — Prognoser & scenarier
-- [ ] Skapa namngivna scenarier (Bas, Optimistisk, Worst case)
-- [ ] Prognos = Utfall YTD + justerat budget för resten av år
-- [ ] Scenariojämförelse sida vid sida
-- [ ] Frysning av scenarioversionerma (snapshot)
+## Pågående — Fas 4: Admin-vy
 
-### Fas 5 — Åtkomstkontroll & administration
-- [ ] Rollhantering: Admin, Bolagsansvarig, Kostnadsställeansvarig
-- [ ] Bolagsspecifik konfiguration
-- [ ] Låsning av godkänd budget (sign-off)
-- [ ] Versionshistorik — vem ändrade vad och när
+Admin-vyn nås via `/admin` och är synlig enbart för användare med rollen `admin`.
+Sidebar-länk visas konditionellt baserat på roll.
 
-### Fas 6 — Rapportering & export
-- [ ] Föregående års utfall-vy
+### 4.1 Admin-skal *(nästa)*
+- [ ] `/admin`-route med egen layout/navigering
+- [ ] Admin-sidebar med sektioner: Användare, Scenarier, Konton, Kostnadsställen, Synkronisering, Deadlines
+- [ ] Sidebar-länk "Admin" i huvud-layout (visas bara för admins)
+
+### 4.2 Användarhantering (`/admin/users`)
+- [ ] Lista alla användare med roll och tilldelade KS/bolag
+- [ ] Bjuda in ny användare via e-post (Supabase email invite)
+- [ ] Tilldela roll: Admin / Bolagsansvarig / KS-ansvarig
+- [ ] Koppla bolagsansvarig till bolag
+- [ ] Koppla KS-ansvarig till ett eller flera KS (och/eller region)
+- [ ] Ta bort användare / återkalla åtkomst
+
+### 4.3 Scenariohantering (`/admin/scenarios`)
+- [ ] Lista alla scenarier per bolag med status (öppet/låst/godkänt)
+- [ ] Byta namn på scenario
+- [ ] Godkänna scenario (is_approved = true, helåsning)
+- [ ] Ångra godkännande
+- [ ] Ta bort scenario (med bekräftelse)
+- [ ] Visa låsstatus per KS inom scenario (vem låste, när)
+
+### 4.4 Kontokonfiguration (`/admin/accounts`)
+- [ ] Flytta/länka från befintlig AccountConfigPage
+- [ ] Bulk-toggle is_budgetable (markera flera konton)
+- [ ] Sätta display_order per sektion
+
+### 4.5 Kostnadsställen (`/admin/cost-centers`)
+- [ ] Lista KS med region och aktiv-status
+- [ ] Aktivera/inaktivera KS
+- [ ] Redigera region-tillhörighet
+- [ ] Lägga till nytt KS manuellt
+
+### 4.6 Deadlines (`/admin/deadlines`)
+- [ ] Sätta deadline per scenario (datum då KS ska vara låst)
+- [ ] Statusöversikt: vilka KS har låst, vilka är kvar
+- [ ] Visuell indikation (grön/gul/röd) per KS
+
+### 4.7 Synkronisering (`/admin/sync`)
+- [ ] Visa senaste kontosynk (tidpunkt, status, antal konton per bolag)
+- [ ] Trigga manuell kontosynk (anropar Fabric-notebook via REST)
+- [ ] Synklogg med historik
+
+---
+
+## Kommande — Fas 5: Utfall & dashboard
+
+- [ ] Fabric-notebook som synkar utfall från silver-lager till actuals-tabellen
+- [ ] Schemalägg utfallssynk (dagligen efter Fortnox-synk)
+- [ ] DashboardPage: budget vs utfall per bolag
+  - Totaler per sektion (Intäkter, Personal etc.)
+  - Avvikelse i kr och %
+  - Trafikljus per KS (grön/gul/röd)
+- [ ] Drilldown per KS och konto
 - [ ] Rullande 12-månaders vy
-- [ ] Kommentarsfält per rad/konto
-- [ ] Export till Excel och PDF
-- [ ] Schemalagda budget vs utfall-rapporter
 
 ---
 
-## Beslut som återstår
+## Kommande — Fas 6: Export & integration
 
-| Beslut | Alternativ | Status |
-|---|---|---|
-| UI-ramverk | Next.js / React / annat | Ej beslutat |
-| Designsystem | shadcn/ui, Tailwind, Fluent UI | Ej beslutat |
-| API-lager | Next.js API routes, FastAPI, direkt Fabric REST | Ej beslutat |
-| Hosting | Azure Static Web Apps, Vercel, Fabric | Ej beslutat |
-| Deployment-pipeline | GitHub Actions, Azure DevOps | Ej beslutat |
+- [ ] Export av scenario till Fabric (Delta-tabell i silver/gold-lager)
+  - Fabric-notebook som läser från Supabase REST och skriver Delta
+  - Triggas manuellt från admin-vyn (`/admin/scenarios`)
+- [ ] Schemalägg kontosynk i Fabric (dagligen 05:00)
+- [ ] Export till Excel (klient-side via SheetJS)
+- [ ] Kommentarsfält per rad/konto i budgetmatrisen
 
 ---
 
-## Nästa steg
+## Tekniska beslut (fattade)
 
-1. Besluta UI-ramverk och hosting
-2. Designa datamodell (se `docs/data-model.md`)
-3. Sätt upp Fabric Warehouse för budgetdata
+| Område | Beslut |
+|---|---|
+| UI-ramverk | React + Vite + TypeScript |
+| Designsystem | Tailwind CSS |
+| Backend/DB | Supabase (Postgres + Auth + RLS) |
+| Hosting | Vercel (auto-deploy från GitHub main) |
+| Fabric-integration | Notebooks via REST API, Supabase service role key |
+| Auth | Supabase email/password (+ invite-flöde planerat) |
+| Kontosynk | Fabric notebook → Supabase REST (dagligen 05:00, ej schemalagd än) |
