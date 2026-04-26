@@ -1,11 +1,12 @@
 import { useRef, useCallback, Fragment, useState } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
 import type { Scenario, ScenarioLock } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
 import CopyRowDialog from '@/components/CopyRowDialog'
+import PercentageDialog from '@/components/PercentageDialog'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
@@ -89,6 +90,7 @@ export default function BudgetMatrix({
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [distributeTarget, setDistributeTarget] = useState<AccountRow | null>(null)
   const [copyTarget, setCopyTarget] = useState<AccountRow | null>(null)
+  const [percentTarget, setPercentTarget] = useState<AccountRow | null>(null)
 
   const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
 
@@ -273,6 +275,13 @@ export default function BudgetMatrix({
                                 >
                                   <Copy size={12} />
                                 </button>
+                                <button
+                                  onClick={() => setPercentTarget(account)}
+                                  title="Procentuell förändring"
+                                  className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                >
+                                  <Percent size={12} />
+                                </button>
                               </div>
                             )}
                           </div>
@@ -383,6 +392,23 @@ export default function BudgetMatrix({
             }
           }}
           onClose={() => setDistributeTarget(null)}
+        />
+      )}
+
+      {percentTarget && (
+        <PercentageDialog
+          account={percentTarget}
+          scenario={scenario}
+          costCenterId={costCenterId}
+          companyId={companyId}
+          futurePeriods={futurePeriods}
+          entries={entries}
+          onApply={(amounts) => {
+            for (const { year, month, amount } of amounts) {
+              onCellChange(percentTarget.id, year, month, amount)
+            }
+          }}
+          onClose={() => setPercentTarget(null)}
         />
       )}
 
