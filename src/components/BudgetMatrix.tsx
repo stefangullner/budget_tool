@@ -283,6 +283,7 @@ export default function BudgetMatrix({
                               ) : (
                                 <div className="relative">
                                   <input
+                                    key={`${key}-${value}`}
                                     ref={(el) => {
                                       if (el) inputRefs.current.set(key, el)
                                       else inputRefs.current.delete(key)
