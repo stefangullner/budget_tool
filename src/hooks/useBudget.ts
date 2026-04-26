@@ -28,6 +28,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   const [accounts, setAccounts] = useState<AccountRow[]>([])
   const [entries, setEntries] = useState<Map<string, number>>(new Map())
   const [actuals, setActuals] = useState<Map<string, number>>(new Map())
+  const [prevActuals, setPrevActuals] = useState<Map<string, number>>(new Map())
   const [locks, setLocks] = useState<ScenarioLock[]>([])
   const [saving, setSaving] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
@@ -109,6 +110,23 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     setActuals(map)
   }, [])
 
+  const loadPrevActuals = useCallback(async (companyId: number, costCenterId: number, scenario: Scenario) => {
+    const { data } = await supabase
+      .from('actuals')
+      .select('account_id, year, month, amount')
+      .eq('company_id', companyId)
+      .eq('cost_center_id', costCenterId)
+      .gte('year', scenario.start_year - 1)
+      .lte('year', scenario.end_year - 1)
+
+    // Store keyed as budget_year:month:accountId (i.e. shift year +1) for easy lookup
+    const map = new Map<string, number>()
+    for (const row of data ?? []) {
+      map.set(periodKey(row.year + 1, row.month) + ':' + row.account_id, row.amount)
+    }
+    setPrevActuals(map)
+  }, [])
+
   const loadLocks = useCallback(async (scenarioId: number) => {
     const { data } = await supabase
       .from('scenario_locks')
@@ -126,9 +144,12 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   useEffect(() => {
     if (companyId && costCenterId && scenarioId) {
       const scenario = scenarios.find((s) => s.id === scenarioId)
-      if (scenario) loadActuals(companyId, costCenterId, scenario)
+      if (scenario) {
+        loadActuals(companyId, costCenterId, scenario)
+        loadPrevActuals(companyId, costCenterId, scenario)
+      }
     }
-  }, [companyId, costCenterId, scenarioId, scenarios, loadActuals])
+  }, [companyId, costCenterId, scenarioId, scenarios, loadActuals, loadPrevActuals])
 
   useEffect(() => {
     if (scenarioId) loadLocks(scenarioId)
@@ -259,6 +280,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     accounts,
     entries,
     actuals,
+    prevActuals,
     locks,
     saving,
     loading,

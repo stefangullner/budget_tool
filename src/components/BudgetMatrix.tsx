@@ -1,5 +1,6 @@
-import { useRef, useCallback, Fragment, useState } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent } from 'lucide-react'
+import { useRef, useCallback, Fragment, useState, useEffect } from 'react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
@@ -17,10 +18,12 @@ interface Props {
   accounts: AccountRow[]
   entries: Map<string, number>
   actuals: Map<string, number>
+  prevActuals: Map<string, number>
   locks: ScenarioLock[]
   saving: Set<string>
   costCenterId: number
   companyId: number
+  userId: string
   onCellChange: (accountId: number, year: number, month: number, amount: number) => void
   onToggleLock: () => void
 }
@@ -41,10 +44,12 @@ export default function BudgetMatrix({
   accounts,
   entries,
   actuals,
+  prevActuals,
   locks,
   saving,
   costCenterId,
   companyId,
+  userId,
   onCellChange,
   onToggleLock,
 }: Props) {
@@ -91,8 +96,64 @@ export default function BudgetMatrix({
   const [distributeTarget, setDistributeTarget] = useState<AccountRow | null>(null)
   const [copyTarget, setCopyTarget] = useState<AccountRow | null>(null)
   const [percentTarget, setPercentTarget] = useState<AccountRow | null>(null)
+  const [deviationEnabled, setDeviationEnabled] = useState(false)
+  const [comments, setComments] = useState<Map<number, string>>(new Map()) // accountId → comment
+  const [openCommentId, setOpenCommentId] = useState<number | null>(null)
+  const [commentDraft, setCommentDraft] = useState('')
 
   const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
+
+  // Load row-level comments (month=null) for this scenario+costCenter
+  useEffect(() => {
+    supabase
+      .from('budget_comments')
+      .select('account_id, comment')
+      .eq('scenario_id', scenario.id)
+      .eq('cost_center_id', costCenterId)
+      .is('month', null)
+      .then(({ data }) => {
+        const map = new Map<number, string>()
+        for (const row of data ?? []) map.set(row.account_id as number, row.comment as string)
+        setComments(map)
+      })
+  }, [scenario.id, costCenterId])
+
+  async function saveComment(accountId: number, comment: string) {
+    const trimmed = comment.trim()
+    // Always delete existing row-level comment first
+    await supabase
+      .from('budget_comments')
+      .delete()
+      .eq('scenario_id', scenario.id)
+      .eq('account_id', accountId)
+      .eq('cost_center_id', costCenterId)
+      .is('month', null)
+    if (trimmed) {
+      await supabase.from('budget_comments').insert({
+        scenario_id: scenario.id,
+        account_id: accountId,
+        cost_center_id: costCenterId,
+        month: null,
+        comment: trimmed,
+        created_by: userId,
+      })
+      setComments((prev) => new Map(prev).set(accountId, trimmed))
+    } else {
+      setComments((prev) => { const next = new Map(prev); next.delete(accountId); return next })
+    }
+    setOpenCommentId(null)
+  }
+
+  function deviationClass(accountId: number, year: number, month: number): string {
+    if (!deviationEnabled) return ''
+    const budget = entries.get(periodKey(year, month) + ':' + accountId) ?? 0
+    const prev = prevActuals.get(periodKey(year, month) + ':' + accountId)
+    if (prev === undefined || prev === 0) return ''
+    const pct = Math.abs((budget - prev) / Math.abs(prev))
+    if (pct >= 0.5) return 'bg-red-50 border-red-200'
+    if (pct >= 0.2) return 'bg-amber-50 border-amber-200'
+    return ''
+  }
 
   function toggleSection(section: string) {
     setCollapsedSections((prev) => {
@@ -161,18 +222,32 @@ export default function BudgetMatrix({
             <span>Redigera direkt i cellen — sparas automatiskt</span>
           )}
         </div>
-        <button
-          onClick={onToggleLock}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-            isLocked
-              ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
-          )}
-        >
-          {isLocked ? <Unlock size={13} /> : <Lock size={13} />}
-          {isLocked ? 'Lås upp KS' : 'Lås KS'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDeviationEnabled((v) => !v)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              deviationEnabled
+                ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+            )}
+          >
+            <AlertTriangle size={13} />
+            Avvikelser
+          </button>
+          <button
+            onClick={onToggleLock}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              isLocked
+                ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+            )}
+          >
+            {isLocked ? <Unlock size={13} /> : <Lock size={13} />}
+            {isLocked ? 'Lås upp KS' : 'Lås KS'}
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
@@ -251,39 +326,64 @@ export default function BudgetMatrix({
                   {!isCollapsed && rows.map((account) => {
                     const globalRowIdx = accounts.indexOf(account)
                     const rowTotal = getRowTotal(account.id)
+                    const hasComment = comments.has(account.id)
+                    const isCommentOpen = openCommentId === account.id
                     return (
-                      <tr key={account.id} className="group border-t border-gray-100 hover:bg-gray-50/50">
+                      <Fragment key={account.id}>
+                      <tr className="group border-t border-gray-100 hover:bg-gray-50/50">
                         <td className="sticky left-0 bg-white px-3 py-1 z-10 hover:bg-gray-50/50">
                           <div className="flex items-center justify-between gap-1">
                             <div className="min-w-0">
                               <span className="font-mono text-gray-400 mr-2">{account.account_number}</span>
                               <span className="text-gray-700">{account.name}</span>
                             </div>
-                            {!isLocked && futurePeriods.length > 0 && (
-                              <div className="invisible group-hover:visible flex items-center gap-0.5 shrink-0">
-                                <button
-                                  onClick={() => setDistributeTarget(account)}
-                                  title="Fördela årsbelopp"
-                                  className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                                >
-                                  <Calculator size={12} />
-                                </button>
-                                <button
-                                  onClick={() => setCopyTarget(account)}
-                                  title="Kopiera rad"
-                                  className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                                >
-                                  <Copy size={12} />
-                                </button>
-                                <button
-                                  onClick={() => setPercentTarget(account)}
-                                  title="Procentuell förändring"
-                                  className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                                >
-                                  <Percent size={12} />
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              {/* Comment button — always visible if comment exists, else hover-only */}
+                              <button
+                                onClick={() => {
+                                  if (isCommentOpen) {
+                                    setOpenCommentId(null)
+                                  } else {
+                                    setCommentDraft(comments.get(account.id) ?? '')
+                                    setOpenCommentId(account.id)
+                                  }
+                                }}
+                                title="Kommentar"
+                                className={cn(
+                                  'p-1 rounded transition-colors',
+                                  hasComment
+                                    ? 'text-brand-500 hover:text-brand-700 hover:bg-brand-50'
+                                    : 'invisible group-hover:visible text-gray-400 hover:text-brand-600 hover:bg-brand-50',
+                                )}
+                              >
+                                <MessageSquare size={12} />
+                              </button>
+                              {!isLocked && futurePeriods.length > 0 && (
+                                <div className="invisible group-hover:visible flex items-center gap-0.5">
+                                  <button
+                                    onClick={() => setDistributeTarget(account)}
+                                    title="Fördela årsbelopp"
+                                    className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                  >
+                                    <Calculator size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => setCopyTarget(account)}
+                                    title="Kopiera rad"
+                                    className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                  >
+                                    <Copy size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => setPercentTarget(account)}
+                                    title="Procentuell förändring"
+                                    className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                  >
+                                    <Percent size={12} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         {periods.map(({ year, month }, periodIdx) => {
@@ -291,6 +391,7 @@ export default function BudgetMatrix({
                           const key = cellKey(account.id, year, month)
                           const value = getValue(account.id, year, month)
                           const isSaving = saving.has(key)
+                          const devClass = !isPast ? deviationClass(account.id, year, month) : ''
                           return (
                             <td key={`${year}-${month}`} className="px-1 py-0.5">
                               {isPast || isLocked ? (
@@ -321,7 +422,10 @@ export default function BudgetMatrix({
                                       e.target.select()
                                     }}
                                     onKeyDown={(e) => handleKeyDown(e, globalRowIdx, periodIdx)}
-                                    className="w-full px-2 py-1.5 text-right rounded border border-transparent focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white hover:border-gray-200 text-gray-900"
+                                    className={cn(
+                                      'w-full px-2 py-1.5 text-right rounded border focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white text-gray-900',
+                                      devClass || 'border-transparent hover:border-gray-200',
+                                    )}
                                   />
                                   {isSaving && (
                                     <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
@@ -337,6 +441,33 @@ export default function BudgetMatrix({
                           {fmt(rowTotal)}
                         </td>
                       </tr>
+                      {/* Inline comment row */}
+                      {isCommentOpen && (
+                        <tr className="border-t border-brand-100 bg-brand-50/30">
+                          <td className="sticky left-0 bg-brand-50/30 px-3 py-2 z-10" colSpan={periods.length + 2}>
+                            <div className="flex items-start gap-2">
+                              <MessageSquare size={12} className="text-brand-400 mt-2 shrink-0" />
+                              <textarea
+                                autoFocus
+                                value={commentDraft}
+                                onChange={(e) => setCommentDraft(e.target.value)}
+                                onBlur={() => saveComment(account.id, commentDraft)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') setOpenCommentId(null)
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault()
+                                    saveComment(account.id, commentDraft)
+                                  }
+                                }}
+                                placeholder="Skriv en kommentar… (Enter för att spara, Esc för att avbryta)"
+                                rows={2}
+                                className="flex-1 text-xs px-2 py-1.5 border border-brand-200 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-brand-400 bg-white text-gray-700 placeholder-gray-400"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     )
                   })}
 
