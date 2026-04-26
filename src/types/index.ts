@@ -43,6 +43,7 @@ export interface Scenario {
   end_year: number
   end_month: number
   is_approved: boolean
+  deadline_date: string | null
   created_by: string
   created_at: string
 }

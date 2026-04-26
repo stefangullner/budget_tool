@@ -212,14 +212,38 @@ export default function BudgetMatrix({
     [accounts, periods],
   )
 
+  // Progress: accounts with at least one non-zero future entry
+  const filledAccounts = accounts.filter((a) =>
+    futurePeriods.some((p) => (entries.get(periodKey(p.year, p.month) + ':' + a.id) ?? 0) !== 0),
+  ).length
+  const totalAccounts = accounts.length
+  const progressPct = totalAccounts > 0 ? Math.round((filledAccounts / totalAccounts) * 100) : 0
+  const isDone = filledAccounts === totalAccounts && totalAccounts > 0
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-gray-500">
-          {isLocked ? (
-            <span className="text-amber-600 font-medium">KS låst — skrivskyddat</span>
-          ) : (
-            <span>Redigera direkt i cellen — sparas automatiskt</span>
+        <div className="flex items-center gap-4">
+          <div className="text-xs text-gray-500">
+            {isLocked ? (
+              <span className="text-amber-600 font-medium">KS låst — skrivskyddat</span>
+            ) : (
+              <span>Redigera direkt i cellen — sparas automatiskt</span>
+            )}
+          </div>
+          {futurePeriods.length > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className={cn('h-full rounded-full transition-all', isDone ? 'bg-green-500' : 'bg-brand-500')}
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <span className={cn('text-xs font-medium tabular-nums', isDone ? 'text-green-600' : 'text-gray-500')}>
+                {filledAccounts}/{totalAccounts}
+                {isDone && ' ✓'}
+              </span>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2">

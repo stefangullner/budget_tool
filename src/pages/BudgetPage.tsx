@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, LayoutList, Table2 } from 'lucide-react'
+import { Plus, LayoutList, Table2, Clock, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
 import { useRole } from '@/hooks/useRole'
@@ -193,6 +193,35 @@ export default function BudgetPage() {
           </select>
         </div>
       </div>
+
+      {/* Deadline banner */}
+      {selectedScenario?.deadline_date && (() => {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const deadline = new Date(selectedScenario.deadline_date)
+        const days = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        if (days > 14) return null
+        const isPast = days < 0
+        const isToday = days === 0
+        return (
+          <div className={cn(
+            'flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm mb-5',
+            isPast ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-amber-50 text-amber-700 border border-amber-200',
+          )}>
+            {isPast ? <AlertTriangle size={15} className="shrink-0" /> : <Clock size={15} className="shrink-0" />}
+            <span>
+              <span className="font-medium">
+                {isPast
+                  ? `Deadline passerad för ${Math.abs(days)} dagar sedan`
+                  : isToday
+                  ? 'Deadline är idag!'
+                  : `${days} ${days === 1 ? 'dag' : 'dagar'} kvar till deadline`}
+              </span>
+              {' — '}{selectedScenario.name}
+            </span>
+          </div>
+        )
+      })()}
 
       {/* Overview */}
       {view === 'overview' && (
