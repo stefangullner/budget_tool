@@ -1,5 +1,5 @@
-import { useRef, useCallback, Fragment } from 'react'
-import { Lock, Unlock, Loader2 } from 'lucide-react'
+import { useRef, useCallback, Fragment, useState } from 'react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
@@ -81,6 +81,17 @@ export default function BudgetMatrix({
     section: section ?? 'Övrigt',
     rows: accounts.filter((a) => (a.config?.section ?? null) === section),
   })).filter((g) => g.rows.length > 0)
+
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+
+  function toggleSection(section: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
+  }
 
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
 
@@ -176,97 +187,141 @@ export default function BudgetMatrix({
           </thead>
 
           <tbody>
-            {grouped.map(({ section, rows }) => (
-              <Fragment key={section}>
-                <tr className="bg-gray-50">
-                  <td
-                    colSpan={periods.length + 2}
-                    className="sticky left-0 px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50"
-                  >
-                    {section}
-                  </td>
-                </tr>
-                {rows.map((account) => {
-                  const globalRowIdx = accounts.indexOf(account)
-                  const rowTotal = getRowTotal(account.id)
-                  return (
-                    <tr key={account.id} className="border-t border-gray-100 hover:bg-gray-50/50">
-                      <td className="sticky left-0 bg-white px-3 py-1 z-10 hover:bg-gray-50/50">
-                        <span className="font-mono text-gray-400 mr-2">{account.account_number}</span>
-                        <span className="text-gray-700">{account.name}</span>
-                      </td>
-                      {periods.map(({ year, month }, periodIdx) => {
-                        const isPast = isPastPeriod(year, month)
-                        const key = cellKey(account.id, year, month)
-                        const value = getValue(account.id, year, month)
-                        const isSaving = saving.has(key)
+            {grouped.map(({ section, rows }) => {
+              const isCollapsed = collapsedSections.has(section)
+              const sectionTotal = rows.reduce((sum, a) => sum + getRowTotal(a.id), 0)
 
+              return (
+                <Fragment key={section}>
+                  {/* Section header — always visible, clickable */}
+                  <tr
+                    className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    onClick={() => toggleSection(section)}
+                  >
+                    <td className="sticky left-0 bg-gray-50 hover:bg-gray-100 px-3 py-2 z-10 transition-colors">
+                      <div className="flex items-center gap-1.5">
+                        {isCollapsed
+                          ? <ChevronRight size={13} className="text-gray-400 shrink-0" />
+                          : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                          {section}
+                        </span>
+                        {isCollapsed && (
+                          <span className="ml-2 text-xs text-gray-400 font-normal normal-case tracking-normal">
+                            {rows.length} konton
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    {periods.map(({ year, month }) => {
+                      const total = rows.reduce((sum, a) => sum + getValue(a.id, year, month), 0)
+                      return (
+                        <td
+                          key={`${year}-${month}`}
+                          className={cn(
+                            'px-2 py-2 text-right text-xs transition-colors',
+                            isCollapsed ? 'font-semibold text-gray-800' : 'font-medium text-gray-500',
+                          )}
+                        >
+                          {isCollapsed ? fmt(total) : ''}
+                        </td>
+                      )
+                    })}
+                    <td className={cn(
+                      'px-3 py-2 text-right text-xs border-l border-gray-200 transition-colors',
+                      isCollapsed
+                        ? 'font-bold text-gray-900 bg-gray-100'
+                        : 'font-medium text-gray-400 bg-gray-50',
+                    )}>
+                      {isCollapsed ? fmt(sectionTotal) : ''}
+                    </td>
+                  </tr>
+
+                  {/* Account rows — hidden when collapsed */}
+                  {!isCollapsed && rows.map((account) => {
+                    const globalRowIdx = accounts.indexOf(account)
+                    const rowTotal = getRowTotal(account.id)
+                    return (
+                      <tr key={account.id} className="border-t border-gray-100 hover:bg-gray-50/50">
+                        <td className="sticky left-0 bg-white px-3 py-1 z-10 hover:bg-gray-50/50">
+                          <span className="font-mono text-gray-400 mr-2">{account.account_number}</span>
+                          <span className="text-gray-700">{account.name}</span>
+                        </td>
+                        {periods.map(({ year, month }, periodIdx) => {
+                          const isPast = isPastPeriod(year, month)
+                          const key = cellKey(account.id, year, month)
+                          const value = getValue(account.id, year, month)
+                          const isSaving = saving.has(key)
+                          return (
+                            <td key={`${year}-${month}`} className="px-1 py-0.5">
+                              {isPast || isLocked ? (
+                                <div className={cn(
+                                  'px-2 py-1.5 text-right rounded',
+                                  isPast ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
+                                )}>
+                                  {fmt(value)}
+                                </div>
+                              ) : (
+                                <div className="relative">
+                                  <input
+                                    ref={(el) => {
+                                      if (el) inputRefs.current.set(key, el)
+                                      else inputRefs.current.delete(key)
+                                    }}
+                                    type="text"
+                                    defaultValue={value !== 0 ? fmt(value) : ''}
+                                    onBlur={(e) => {
+                                      const parsed = parseSEK(e.target.value)
+                                      onCellChange(account.id, year, month, parsed)
+                                      e.target.value = parsed !== 0 ? fmt(parsed) : ''
+                                    }}
+                                    onFocus={(e) => {
+                                      const raw = entries.get(key) ?? 0
+                                      e.target.value = raw !== 0 ? String(raw) : ''
+                                      e.target.select()
+                                    }}
+                                    onKeyDown={(e) => handleKeyDown(e, globalRowIdx, periodIdx)}
+                                    className="w-full px-2 py-1.5 text-right rounded border border-transparent focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white hover:border-gray-200 text-gray-900"
+                                  />
+                                  {isSaving && (
+                                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                                      <Loader2 size={10} className="animate-spin text-gray-300" />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })}
+                        <td className="px-3 py-1 text-right font-medium text-gray-700 bg-gray-50 border-l border-gray-200">
+                          {fmt(rowTotal)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+
+                  {/* Section subtotal — only shown when expanded */}
+                  {!isCollapsed && (
+                    <tr className="border-t border-gray-200 bg-gray-50/80">
+                      <td className="sticky left-0 bg-gray-50/80 px-3 py-1.5 font-medium text-gray-600">
+                        Σ {section}
+                      </td>
+                      {periods.map(({ year, month }) => {
+                        const total = rows.reduce((sum, a) => sum + getValue(a.id, year, month), 0)
                         return (
-                          <td key={`${year}-${month}`} className="px-1 py-0.5">
-                            {isPast || isLocked ? (
-                              <div className={cn(
-                                'px-2 py-1.5 text-right rounded',
-                                isPast ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
-                              )}>
-                                {fmt(value)}
-                              </div>
-                            ) : (
-                              <div className="relative">
-                                <input
-                                  ref={(el) => {
-                                    if (el) inputRefs.current.set(key, el)
-                                    else inputRefs.current.delete(key)
-                                  }}
-                                  type="text"
-                                  defaultValue={value !== 0 ? fmt(value) : ''}
-                                  onBlur={(e) => {
-                                    const parsed = parseSEK(e.target.value)
-                                    onCellChange(account.id, year, month, parsed)
-                                    e.target.value = parsed !== 0 ? fmt(parsed) : ''
-                                  }}
-                                  onFocus={(e) => {
-                                    const raw = entries.get(key) ?? 0
-                                    e.target.value = raw !== 0 ? String(raw) : ''
-                                    e.target.select()
-                                  }}
-                                  onKeyDown={(e) => handleKeyDown(e, globalRowIdx, periodIdx)}
-                                  className="w-full px-2 py-1.5 text-right rounded border border-transparent focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white hover:border-gray-200 text-gray-900"
-                                />
-                                {isSaving && (
-                                  <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
-                                    <Loader2 size={10} className="animate-spin text-gray-300" />
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                          <td key={`${year}-${month}`} className="px-2 py-1.5 text-right font-medium text-gray-700">
+                            {fmt(total)}
                           </td>
                         )
                       })}
-                      <td className="px-3 py-1 text-right font-medium text-gray-700 bg-gray-50 border-l border-gray-200">
-                        {fmt(rowTotal)}
+                      <td className="px-3 py-1.5 text-right font-semibold text-gray-800 bg-gray-100 border-l border-gray-200">
+                        {fmt(sectionTotal)}
                       </td>
                     </tr>
-                  )
-                })}
-                {/* Section subtotal */}
-                <tr className="border-t border-gray-200 bg-gray-50/80">
-                  <td className="sticky left-0 bg-gray-50/80 px-3 py-1.5 font-medium text-gray-600">
-                    Σ {section}
-                  </td>
-                  {periods.map(({ year, month }) => {
-                    const total = rows.reduce((sum, a) => sum + getValue(a.id, year, month), 0)
-                    return (
-                      <td key={`${year}-${month}`} className="px-2 py-1.5 text-right font-medium text-gray-700">
-                        {fmt(total)}
-                      </td>
-                    )
-                  })}
-                  <td className="px-3 py-1.5 text-right font-semibold text-gray-800 bg-gray-100 border-l border-gray-200">
-                    {fmt(rows.reduce((sum, a) => sum + getRowTotal(a.id), 0))}
-                  </td>
-                </tr>
-              </Fragment>
-            ))}
+                  )}
+                </Fragment>
+              )
+            })}
 
             {/* Grand total */}
             <tr className="border-t-2 border-gray-300 bg-gray-100">
