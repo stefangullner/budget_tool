@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Fragment } from 'react'
 import { Check, X, Clock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -86,6 +86,29 @@ export default function AccountConfigPage() {
     )
   }
 
+  async function handleBulkToggleSection(section: string | null, value: boolean) {
+    const affectedAccounts = accounts.filter(a => (a.config?.section ?? null) === section)
+    const affectedIds = affectedAccounts.map(a => a.id)
+    if (affectedIds.length === 0) return
+
+    const upserts = affectedIds.map(id => ({
+      account_id: id,
+      is_budgetable: value,
+      section,
+      is_calculated: false,
+      display_order: 0,
+    }))
+    await supabase.from('account_configs').upsert(upserts, { onConflict: 'account_id' })
+
+    setAccounts(prev =>
+      prev.map(a =>
+        affectedIds.includes(a.id)
+          ? { ...a, config: { ...(a.config ?? { id: 0, account_id: a.id, is_calculated: false, formula: null, display_order: 0, notes: null }), is_budgetable: value, section } }
+          : a
+      )
+    )
+  }
+
   async function updateSection(account: AccountRow, section: string) {
     const config = account.config
     if (config) {
@@ -120,6 +143,11 @@ export default function AccountConfigPage() {
   })
 
   const budgetableCount = accounts.filter((a) => a.config?.is_budgetable).length
+
+  const SECTION_KEYS = [...SECTIONS, null] as (string | null)[]
+  const groupedSections = SECTION_KEYS
+    .map(s => ({ section: s, rows: filtered.filter(a => (a.config?.section ?? null) === s) }))
+    .filter(g => g.rows.length > 0)
 
   return (
     <div className="p-8 max-w-6xl">
@@ -210,47 +238,74 @@ export default function AccountConfigPage() {
                 <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 w-28">Budgetera</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map((account) => (
-                <tr key={account.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-2.5 font-mono text-gray-700">{account.account_number}</td>
-                  <td className="px-4 py-2.5 text-gray-900">{account.name}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={cn(
-                      'inline-flex px-2 py-0.5 rounded text-xs font-medium',
-                      account.account_type === 'income' && 'bg-green-50 text-green-700',
-                      account.account_type === 'expense' && 'bg-red-50 text-red-700',
-                      account.account_type === 'balance' && 'bg-gray-100 text-gray-600',
-                    )}>
-                      {ACCOUNT_TYPE_LABELS[account.account_type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <select
-                      value={account.config?.section ?? ''}
-                      onChange={(e) => updateSection(account, e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 bg-white"
-                    >
-                      <option value="">—</option>
-                      {SECTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    <button
-                      onClick={() => toggleBudgetable(account)}
-                      className={cn(
-                        'inline-flex items-center justify-center w-8 h-8 rounded-full transition-colors',
-                        account.config?.is_budgetable
-                          ? 'bg-brand-100 text-brand-700 hover:bg-brand-200'
-                          : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
-                      )}
-                    >
-                      {account.config?.is_budgetable ? <Check size={14} /> : <X size={14} />}
-                    </button>
-                  </td>
-                </tr>
+            <tbody>
+              {groupedSections.map(({ section, rows }) => (
+                <Fragment key={`section-${section ?? 'none'}`}>
+                  <tr className="bg-gray-50 border-y border-gray-200">
+                    <td colSpan={5} className="px-4 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          {section ?? '— Ingen sektion'} ({rows.length})
+                        </span>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleBulkToggleSection(section, true)}
+                            className="px-2 py-0.5 text-xs rounded border border-brand-200 text-brand-700 hover:bg-brand-50 transition-colors"
+                          >
+                            Aktivera alla
+                          </button>
+                          <button
+                            onClick={() => handleBulkToggleSection(section, false)}
+                            className="px-2 py-0.5 text-xs rounded border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors"
+                          >
+                            Inaktivera alla
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  {rows.map((account) => (
+                    <tr key={account.id} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
+                      <td className="px-4 py-2.5 font-mono text-gray-700">{account.account_number}</td>
+                      <td className="px-4 py-2.5 text-gray-900">{account.name}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={cn(
+                          'inline-flex px-2 py-0.5 rounded text-xs font-medium',
+                          account.account_type === 'income' && 'bg-green-50 text-green-700',
+                          account.account_type === 'expense' && 'bg-red-50 text-red-700',
+                          account.account_type === 'balance' && 'bg-gray-100 text-gray-600',
+                        )}>
+                          {ACCOUNT_TYPE_LABELS[account.account_type]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <select
+                          value={account.config?.section ?? ''}
+                          onChange={(e) => updateSection(account, e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 bg-white"
+                        >
+                          <option value="">—</option>
+                          {SECTIONS.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <button
+                          onClick={() => toggleBudgetable(account)}
+                          className={cn(
+                            'inline-flex items-center justify-center w-8 h-8 rounded-full transition-colors',
+                            account.config?.is_budgetable
+                              ? 'bg-brand-100 text-brand-700 hover:bg-brand-200'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
+                          )}
+                        >
+                          {account.config?.is_budgetable ? <Check size={14} /> : <X size={14} />}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
