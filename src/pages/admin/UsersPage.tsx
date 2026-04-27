@@ -69,15 +69,24 @@ export default function UsersPage() {
   const fetchUsers = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) { setError('Kunde inte hämta användare'); setLoading(false); return }
-    const data = await res.json()
-    setUsers(data)
-    setLoading(false)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const body = await res.text()
+        setError(`Fel ${res.status}: ${body || 'Kunde inte hämta användare'}`)
+        return
+      }
+      const data = await res.json()
+      setUsers(data)
+    } catch (err) {
+      setError(`Nätverksfel: ${String(err)}`)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
