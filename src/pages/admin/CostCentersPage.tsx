@@ -96,6 +96,7 @@ export default function CostCentersPage() {
   }
 
   const activeCount = costCenters.filter(c => c.is_active).length
+  const inactiveCount = costCenters.length - activeCount
 
   return (
     <div className="p-8 max-w-4xl">
@@ -131,7 +132,7 @@ export default function CostCentersPage() {
       </div>
 
       <div className="mb-3 text-xs text-gray-400">
-        {activeCount} av {costCenters.length} kostnadsställen aktiva
+        {activeCount} aktiva · {inactiveCount} inaktiva · {costCenters.length} totalt
       </div>
 
       {loading ? (
