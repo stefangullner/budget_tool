@@ -88,7 +88,7 @@ export default function AccountConfigPage() {
 
   async function toggleIntercompany(account: AccountRow) {
     const config = account.config
-    const newVal = !(config?.is_intercompany ?? false)
+    const newVal = !(config?.is_intercompany === true)
     if (config) {
       await supabase.from('account_configs').update({ is_intercompany: newVal }).eq('account_id', account.id)
     } else {
