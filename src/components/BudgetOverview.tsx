@@ -74,12 +74,10 @@ export default function BudgetOverview({ scenario, accounts, costCenters, locks,
     )
   }
 
-  function progress(costCenterId: number): { filled: number; total: number } {
-    const total = accounts.length
-    const filled = accounts.filter(
+  function isKsDone(costCenterId: number): boolean {
+    return accounts.length > 0 && accounts.every(
       (a) => (allEntries.get(entryKey(costCenterId, a.id)) ?? 0) !== 0,
-    ).length
-    return { filled, total }
+    )
   }
 
   if (loading) {
@@ -90,7 +88,24 @@ export default function BudgetOverview({ scenario, accounts, costCenters, locks,
     )
   }
 
+  const doneCount = costCenters.filter((ks) => isKsDone(ks.id)).length
+  const totalCount = costCenters.length
+
   return (
+    <div>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all', doneCount === totalCount && totalCount > 0 ? 'bg-green-500' : 'bg-brand-500')}
+              style={{ width: totalCount > 0 ? `${Math.round((doneCount / totalCount) * 100)}%` : '0%' }}
+            />
+          </div>
+          <span className={cn('text-sm font-medium', doneCount === totalCount && totalCount > 0 ? 'text-green-600' : 'text-gray-700')}>
+            {doneCount} av {totalCount} KS klara
+          </span>
+        </div>
+      </div>
     <div className="overflow-x-auto border border-gray-200 rounded-lg">
       <table className="text-xs min-w-max w-full">
         <thead>
@@ -115,9 +130,7 @@ export default function BudgetOverview({ scenario, accounts, costCenters, locks,
         <tbody>
           {costCenters.map((ks) => {
             const isLocked = locks.some((l) => l.cost_center_id === ks.id)
-            const { filled, total } = progress(ks.id)
-            const pct = total > 0 ? Math.round((filled / total) * 100) : 0
-            const isDone = filled === total && total > 0
+            const done = isKsDone(ks.id)
 
             return (
               <tr
@@ -133,37 +146,19 @@ export default function BudgetOverview({ scenario, accounts, costCenters, locks,
                     <ChevronRight size={11} className="text-gray-300 shrink-0 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </td>
-                {visibleSections.map((s) => {
-                  const total = sectionTotal(ks.id, s)
-                  return (
-                    <td key={s} className="px-3 py-2 text-right font-mono text-gray-700">
-                      {fmt(total)}
-                    </td>
-                  )
-                })}
+                {visibleSections.map((s) => (
+                  <td key={s} className="px-3 py-2 text-right font-mono text-gray-700">
+                    {fmt(sectionTotal(ks.id, s))}
+                  </td>
+                ))}
                 <td className="px-3 py-2 text-right font-mono font-semibold text-gray-900 bg-gray-50 border-l border-gray-200">
                   {fmt(ksTotal(ks.id))}
                 </td>
-                <td className="px-3 py-2">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="flex items-center gap-1.5 w-full">
-                      <div className="flex-1 bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className={cn(
-                            'h-full rounded-full transition-all',
-                            isDone ? 'bg-green-500' : pct > 50 ? 'bg-brand-500' : 'bg-gray-400',
-                          )}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span className={cn(
-                        'text-[10px] font-medium tabular-nums shrink-0',
-                        isDone ? 'text-green-600' : 'text-gray-500',
-                      )}>
-                        {filled}/{total}
-                      </span>
-                    </div>
-                  </div>
+                <td className="px-3 py-2 text-center">
+                  {done
+                    ? <span className="text-xs font-medium text-green-600">✓ Klar</span>
+                    : <span className="text-xs text-gray-300">—</span>
+                  }
                 </td>
                 <td />
               </tr>
@@ -191,6 +186,7 @@ export default function BudgetOverview({ scenario, accounts, costCenters, locks,
           <td />
         </tr>
       </table>
+    </div>
     </div>
   )
 }
