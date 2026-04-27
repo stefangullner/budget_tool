@@ -28,6 +28,7 @@ export interface AccountConfig {
   account_id: number
   is_budgetable: boolean
   is_calculated: boolean
+  is_intercompany: boolean
   formula: string | null
   display_order: number
   section: string | null

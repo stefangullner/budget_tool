@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
-import { Check, X, Clock } from 'lucide-react'
+import { Check, X, Clock, ArrowLeftRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, Account, AccountConfig } from '@/types'
@@ -83,6 +83,23 @@ export default function AccountConfigPage() {
           ? { ...a, config: { ...(a.config ?? { id: 0, account_id: a.id, is_calculated: false, formula: null, display_order: 0, section: null, notes: null }), is_budgetable: newVal } }
           : a,
       ),
+    )
+  }
+
+  async function toggleIntercompany(account: AccountRow) {
+    const config = account.config
+    const newVal = !(config?.is_intercompany ?? false)
+    if (config) {
+      await supabase.from('account_configs').update({ is_intercompany: newVal }).eq('account_id', account.id)
+    } else {
+      await supabase.from('account_configs').insert({ account_id: account.id, is_budgetable: false, is_calculated: false, display_order: 0, is_intercompany: newVal })
+    }
+    setAccounts(prev =>
+      prev.map(a =>
+        a.id === account.id
+          ? { ...a, config: { ...(a.config ?? { id: 0, account_id: a.id, is_budgetable: false, is_calculated: false, formula: null, display_order: 0, section: null, notes: null }), is_intercompany: newVal } }
+          : a
+      )
     )
   }
 
@@ -236,6 +253,7 @@ export default function AccountConfigPage() {
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-24">Typ</th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-44">Sektion</th>
                 <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 w-28">Budgetera</th>
+                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 w-16" title="Intercompany">IC</th>
               </tr>
             </thead>
             <tbody>
@@ -301,6 +319,20 @@ export default function AccountConfigPage() {
                           )}
                         >
                           {account.config?.is_budgetable ? <Check size={14} /> : <X size={14} />}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <button
+                          onClick={() => toggleIntercompany(account)}
+                          title={account.config?.is_intercompany ? 'Intercompany' : 'Markera som intercompany'}
+                          className={cn(
+                            'inline-flex items-center justify-center w-8 h-8 rounded-full transition-colors',
+                            account.config?.is_intercompany
+                              ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
+                          )}
+                        >
+                          <ArrowLeftRight size={12} />
                         </button>
                       </td>
                     </tr>

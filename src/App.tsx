@@ -4,6 +4,7 @@ import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import AccountConfigPage from '@/pages/AccountConfigPage'
 import BudgetPage from '@/pages/BudgetPage'
+import IntercompanyPage from '@/pages/IntercompanyPage'
 import Layout from '@/components/Layout'
 import AdminGuard from '@/components/AdminGuard'
 import AdminLayout from '@/pages/admin/AdminLayout'
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/budget" element={<BudgetPage />} />
         <Route path="/accounts" element={<AccountConfigPage />} />
+        <Route path="/intercompany" element={<IntercompanyPage />} />
         <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
         <Route path="/admin/*" element={
           <AdminGuard>

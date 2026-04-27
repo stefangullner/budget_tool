@@ -1,14 +1,15 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Building2, BookOpen, ShieldCheck, LogOut } from 'lucide-react'
+import { LayoutDashboard, Building2, BookOpen, ShieldCheck, LogOut, ArrowLeftRight } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { to: '/dashboard', label: 'Översikt',  icon: LayoutDashboard },
-  { to: '/budget',    label: 'Budget',    icon: Building2 },
-  { to: '/accounts',  label: 'Konton',    icon: BookOpen },
+  { to: '/dashboard',    label: 'Översikt',     icon: LayoutDashboard },
+  { to: '/budget',       label: 'Budget',       icon: Building2 },
+  { to: '/accounts',     label: 'Konton',       icon: BookOpen },
+  { to: '/intercompany', label: 'Intercompany', icon: ArrowLeftRight },
 ]
 
 export default function Layout({ children }: { children: ReactNode }) {
