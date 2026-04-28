@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
-import { RefreshCw, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { RefreshCw, CheckCircle2, XCircle, Clock, Play } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
 type SyncLogRow = {
   id: number
@@ -20,6 +22,8 @@ const TYPE_LABELS: Record<string, string> = {
   accounts_filter: 'Konton — filtrering',
   accounts_upsert: 'Konton — upsert',
   accounts_configs: 'Kontokonfiguration',
+  accounts_trigger: 'Manuell synk-trigger',
+  export: 'Export',
   test: 'Test',
 }
 
@@ -49,6 +53,8 @@ export default function SyncPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const fetchLog = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true)
@@ -68,6 +74,33 @@ export default function SyncPage() {
     fetchLog()
   }, [fetchLog])
 
+  async function triggerSync() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/fabric-trigger`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'sync-accounts' }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSyncResult({ ok: true, message: `Synk startad i Fabric (jobb-ID: ${data.jobId ?? '—'})` })
+        await fetchLog(true)
+      } else {
+        setSyncResult({ ok: false, message: data.error ?? `Fel ${res.status}` })
+      }
+    } catch (err) {
+      setSyncResult({ ok: false, message: String(err) })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const lastAccountSync = log.find(r => r.sync_type === 'accounts')
   const perCompany = lastAccountSync?.details?.synced_per_company as Record<string, number> | undefined
 
@@ -76,17 +109,42 @@ export default function SyncPage() {
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Synkronisering</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Synkstatus för konton — körs automatiskt via Fabric dagligen kl. 10:00</p>
+          <p className="text-sm text-gray-500 mt-0.5">Kontosynk från Fortnox via Fabric — körs automatiskt dagligen kl. 10:00</p>
         </div>
-        <button
-          onClick={() => fetchLog(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
-        >
-          <RefreshCw size={14} className={cn(refreshing && 'animate-spin')} />
-          Uppdatera
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => fetchLog(true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw size={14} className={cn(refreshing && 'animate-spin')} />
+            Uppdatera
+          </button>
+          <button
+            onClick={triggerSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-40"
+          >
+            <Play size={14} className={cn(syncing && 'animate-pulse')} />
+            {syncing ? 'Startar...' : 'Synka konton nu'}
+          </button>
+        </div>
       </div>
+
+      {/* Synk-resultat */}
+      {syncResult && (
+        <div className={cn(
+          'flex items-start gap-2 px-4 py-3 rounded-lg text-sm mb-5 border',
+          syncResult.ok
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        )}>
+          {syncResult.ok
+            ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
+            : <XCircle size={15} className="mt-0.5 shrink-0" />}
+          {syncResult.message}
+        </div>
+      )}
 
       {/* Senaste synk-kort */}
       {lastAccountSync && (
@@ -146,7 +204,7 @@ export default function SyncPage() {
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-40">Tid</th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Typ</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-24">Källa</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-28">Källa</th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-24">Status</th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Detaljer</th>
               </tr>
@@ -160,13 +218,9 @@ export default function SyncPage() {
                   <td className="px-4 py-2.5">
                     <span className={cn(
                       'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium',
-                      row.status === 'success'
-                        ? 'bg-green-50 text-green-700'
-                        : 'bg-red-50 text-red-700'
+                      row.status === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                     )}>
-                      {row.status === 'success'
-                        ? <CheckCircle2 size={10} />
-                        : <XCircle size={10} />}
+                      {row.status === 'success' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
                       {row.status}
                     </span>
                   </td>
