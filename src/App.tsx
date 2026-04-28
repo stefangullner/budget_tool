@@ -14,6 +14,7 @@ import AccountsAdminPage from '@/pages/admin/AccountsAdminPage'
 import CostCentersPage from '@/pages/admin/CostCentersPage'
 import DeadlinesPage from '@/pages/admin/DeadlinesPage'
 import SyncPage from '@/pages/admin/SyncPage'
+import ExportPage from '@/pages/admin/ExportPage'
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -49,6 +50,7 @@ export default function App() {
                 <Route path="cost-centers" element={<CostCentersPage />} />
                 <Route path="deadlines"    element={<DeadlinesPage />} />
                 <Route path="sync"         element={<SyncPage />} />
+                <Route path="export"       element={<ExportPage />} />
               </Routes>
             </AdminLayout>
           </AdminGuard>

@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Users, FileText, BookOpen, Building, Calendar, RefreshCw } from 'lucide-react'
+import { Users, FileText, BookOpen, Building, Calendar, RefreshCw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const adminNav = [
@@ -10,6 +10,7 @@ const adminNav = [
   { to: '/admin/cost-centers', label: 'Kostnadsställen', icon: Building },
   { to: '/admin/deadlines',    label: 'Deadlines',       icon: Calendar },
   { to: '/admin/sync',         label: 'Synkronisering',  icon: RefreshCw },
+  { to: '/admin/export',       label: 'Export',          icon: Download },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
