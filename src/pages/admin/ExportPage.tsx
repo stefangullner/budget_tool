@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { Download, CheckCircle2, XCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
