@@ -65,6 +65,7 @@ export default function UsersPage() {
 
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
@@ -161,6 +162,7 @@ export default function UsersPage() {
   async function deleteUser() {
     if (!deleteUserId) return
     setDeleting(true)
+    setDeleteError(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users/${deleteUserId}`, {
@@ -168,10 +170,15 @@ export default function UsersPage() {
         headers: { Authorization: `Bearer ${session?.access_token}` },
       })
       if (res.ok) {
-        setUsers(prev => prev.filter(u => u.id !== deleteUserId))
+        setDeleteUserId(null)
+        await fetchUsers()
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setDeleteError(body.error ?? `Fel ${res.status}`)
       }
+    } catch (err) {
+      setDeleteError(String(err))
     } finally {
-      setDeleteUserId(null)
       setDeleting(false)
     }
   }
@@ -234,9 +241,12 @@ export default function UsersPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
             <h2 className="text-base font-semibold text-gray-900 mb-2">Ta bort användare?</h2>
-            <p className="text-sm text-gray-500 mb-5">
+            <p className="text-sm text-gray-500 mb-4">
               Användaren och all tillhörande data tas bort permanent. Åtgärden kan inte ångras.
             </p>
+            {deleteError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{deleteError}</p>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeleteUserId(null)}
@@ -407,7 +417,7 @@ export default function UsersPage() {
                         Roller
                       </button>
                       <button
-                        onClick={() => setDeleteUserId(u.id)}
+                        onClick={() => { setDeleteUserId(u.id); setDeleteError(null) }}
                         className="p-1.5 text-gray-300 hover:text-red-500 transition-colors rounded"
                       >
                         <Trash2 size={14} />
