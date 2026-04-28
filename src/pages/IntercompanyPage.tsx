@@ -53,40 +53,48 @@ export default function IntercompanyPage() {
   const loadData = useCallback(async (name: string) => {
     if (!name) return
     setLoading(true)
-    const matchingIds = scenarios.filter(s => s.name === name).map(s => s.id)
-    if (matchingIds.length === 0) { setLines([]); setLoading(false); return }
+    try {
+      const matchingIds = scenarios.filter(s => s.name === name).map(s => s.id)
+      if (matchingIds.length === 0) { setLines([]); return }
 
-    const { data } = await supabase
-      .from('budget_entries')
-      .select('amount, account_id, scenario_id, accounts(account_number, name, company_id, account_configs(is_intercompany))')
-      .in('scenario_id', matchingIds)
+      const { data, error } = await supabase
+        .from('budget_entries')
+        .select('amount, account_id, scenario_id, accounts(account_number, name, company_id, account_configs(is_intercompany))')
+        .in('scenario_id', matchingIds)
 
-    const entries = (data ?? []) as unknown as EntryRow[]
+      if (error) throw error
 
-    // Filtrera på intercompany-konton
-    const icEntries = entries.filter(e => e.accounts?.account_configs?.some(c => c.is_intercompany))
+      const entries = (data ?? []) as unknown as EntryRow[]
 
-    // Aggregera per (account_number, company_id)
-    const map = new Map<string, AccountLine>()
-    for (const e of icEntries) {
-      if (!e.accounts) continue
-      const key = e.accounts.account_number
-      if (!map.has(key)) {
-        map.set(key, { account_number: key, name: e.accounts.name, amounts: {}, netto: 0 })
+      // Filtrera på intercompany-konton
+      const icEntries = entries.filter(e => e.accounts?.account_configs?.some(c => c.is_intercompany))
+
+      // Aggregera per (account_number, company_id)
+      const map = new Map<string, AccountLine>()
+      for (const e of icEntries) {
+        if (!e.accounts) continue
+        const key = e.accounts.account_number
+        if (!map.has(key)) {
+          map.set(key, { account_number: key, name: e.accounts.name, amounts: {}, netto: 0 })
+        }
+        const line = map.get(key)!
+        const cid = e.accounts.company_id
+        line.amounts[cid] = (line.amounts[cid] ?? 0) + e.amount
       }
-      const line = map.get(key)!
-      const cid = e.accounts.company_id
-      line.amounts[cid] = (line.amounts[cid] ?? 0) + e.amount
+
+      // Beräkna netto
+      const result: AccountLine[] = [...map.values()].map(line => ({
+        ...line,
+        netto: Object.values(line.amounts).reduce((s, a) => s + a, 0),
+      })).sort((a, b) => a.account_number.localeCompare(b.account_number))
+
+      setLines(result)
+    } catch (err) {
+      console.error('IntercompanyPage loadData error:', err)
+      setLines([])
+    } finally {
+      setLoading(false)
     }
-
-    // Beräkna netto
-    const result: AccountLine[] = [...map.values()].map(line => ({
-      ...line,
-      netto: Object.values(line.amounts).reduce((s, a) => s + a, 0),
-    })).sort((a, b) => a.account_number.localeCompare(b.account_number))
-
-    setLines(result)
-    setLoading(false)
   }, [scenarios])
 
   useEffect(() => {
