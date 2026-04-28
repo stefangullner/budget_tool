@@ -8,7 +8,7 @@ const cors = {
 
 const WORKSPACE_ID = 'febab450-3c4c-4bec-88b3-b03be0622aba'
 const NOTEBOOK_SYNC_ACCOUNTS_ID = '2bb95f6f-4726-4464-9037-f4e2ec4d524e'
-const LAKEHOUSE_SILVER_ID = 'af1ed20a-e458-4c90-a7c0-083aad76f01c'
+const LAKEHOUSE_BRONZE_ID = 'ea9e1c96-5416-4e2d-b080-9a4b43b3d32c'
 const FABRIC_API = 'https://api.fabric.microsoft.com/v1'
 const ONELAKE_API = 'https://onelake.dfs.fabric.microsoft.com'
 
@@ -35,7 +35,7 @@ async function runFabricNotebook(notebookId: string, fabricToken: string) {
 }
 
 async function uploadToOneLake(path: string, content: string, storageToken: string) {
-  const base = `${ONELAKE_API}/${WORKSPACE_ID}/${LAKEHOUSE_SILVER_ID}/Files/${path}`
+  const base = `${ONELAKE_API}/${WORKSPACE_ID}/${LAKEHOUSE_BRONZE_ID}/Files/${path}`
   const bytes = new TextEncoder().encode(content)
 
   // 1. Create file
@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
       const csv = toCSV(rows)
       const date = new Date().toISOString().slice(0, 10)
       const safeName = scenario.name.replace(/[^a-zA-Z0-9_\-åäöÅÄÖ]/g, '_')
-      const filename = `exports/${safeName}_${date}.csv`
+      const filename = `forecasts/${safeName}_${date}.csv`
 
       await uploadToOneLake(filename, csv, storageToken)
 
@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
         details: { scenario_id: scenarioId, scenario_name: scenario.name, rows: rows.length, file: filename },
       })
 
-      return json({ ok: true, file: `lh_silver/Files/${filename}`, rows: rows.length })
+      return json({ ok: true, file: `lh_bronze/Files/${filename}`, rows: rows.length })
     }
 
     return json({ error: 'Okänd action' }, 400)

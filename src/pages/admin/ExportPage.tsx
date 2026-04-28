@@ -107,7 +107,7 @@ export default function ExportPage() {
     <div className="p-8 max-w-3xl">
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Export</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Exportera budget-scenario till Fabric (lh_silver/Files/exports/)</p>
+        <p className="text-sm text-gray-500 mt-0.5">Exportera budget-scenario till Fabric (lh_bronze/Files/forecasts/)</p>
       </div>
 
       {/* Export-formulär */}
@@ -129,7 +129,7 @@ export default function ExportPage() {
 
         <div className="mb-5 p-3 bg-gray-50 rounded-lg text-xs text-gray-500 space-y-1">
           <p><span className="font-medium text-gray-700">Format:</span> CSV</p>
-          <p><span className="font-medium text-gray-700">Destination:</span> lh_silver/Files/exports/</p>
+          <p><span className="font-medium text-gray-700">Destination:</span> lh_bronze/Files/forecasts/</p>
           {selectedScenario && (
             <p>
               <span className="font-medium text-gray-700">Filnamn:</span>{' '}
