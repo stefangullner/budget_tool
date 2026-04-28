@@ -70,7 +70,10 @@ Deno.serve(async (req) => {
     if (req.method === 'POST' && last === 'invite') {
       const { email } = await req.json()
       if (!email) return json({ error: 'email required' }, 400)
-      const { error } = await admin.auth.admin.inviteUserByEmail(email)
+      const siteUrl = Deno.env.get('SITE_URL') ?? 'https://budget-tool-sage.vercel.app'
+      const { error } = await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${siteUrl}/dashboard`,
+      })
       if (error) throw error
       return json({ ok: true })
     }

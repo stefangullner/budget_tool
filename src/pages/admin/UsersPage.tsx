@@ -161,14 +161,19 @@ export default function UsersPage() {
   async function deleteUser() {
     if (!deleteUserId) return
     setDeleting(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    await fetch(`${SUPABASE_URL}/functions/v1/admin-users/${deleteUserId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${session?.access_token}` },
-    })
-    setUsers(prev => prev.filter(u => u.id !== deleteUserId))
-    setDeleteUserId(null)
-    setDeleting(false)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users/${deleteUserId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      if (res.ok) {
+        setUsers(prev => prev.filter(u => u.id !== deleteUserId))
+      }
+    } finally {
+      setDeleteUserId(null)
+      setDeleting(false)
+    }
   }
 
   const ksForCompany = newRole === 'cost_center_manager' && newCompanyId
