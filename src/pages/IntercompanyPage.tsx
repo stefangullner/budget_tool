@@ -61,7 +61,7 @@ export default function IntercompanyPage() {
       .select('amount, account_id, scenario_id, accounts(account_number, name, company_id, account_configs(is_intercompany))')
       .in('scenario_id', matchingIds)
 
-    const entries = (data ?? []) as EntryRow[]
+    const entries = (data ?? []) as unknown as EntryRow[]
 
     // Filtrera på intercompany-konton
     const icEntries = entries.filter(e => e.accounts?.account_configs?.some(c => c.is_intercompany))
