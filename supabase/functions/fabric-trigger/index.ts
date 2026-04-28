@@ -19,6 +19,22 @@ function json(data: unknown, status = 200) {
   })
 }
 
+async function getAzureToken(tenantId: string, clientId: string, clientSecret: string, scope: string): Promise<string> {
+  const resp = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope,
+    }),
+  })
+  if (!resp.ok) throw new Error(`Azure token error ${resp.status}: ${await resp.text()}`)
+  const data = await resp.json()
+  return data.access_token
+}
+
 async function runFabricNotebook(notebookId: string, fabricToken: string) {
   const url = `${FABRIC_API}/workspaces/${WORKSPACE_ID}/items/${notebookId}/jobs/instances?jobType=RunNotebook`
   const resp = await fetch(url, {
@@ -104,8 +120,13 @@ Deno.serve(async (req) => {
   if (!roles?.some((r) => r.role === 'admin'))
     return new Response('Forbidden', { status: 403, headers: cors })
 
-  const fabricToken = Deno.env.get('FABRIC_API_TOKEN') ?? ''
-  const storageToken = Deno.env.get('FABRIC_STORAGE_TOKEN') ?? ''
+  const tenantId = Deno.env.get('AZURE_TENANT_ID') ?? ''
+  const clientId = Deno.env.get('AZURE_CLIENT_ID') ?? ''
+  const clientSecret = Deno.env.get('AZURE_CLIENT_SECRET') ?? ''
+
+  if (!tenantId || !clientId || !clientSecret) {
+    return json({ error: 'AZURE_TENANT_ID, AZURE_CLIENT_ID och AZURE_CLIENT_SECRET måste vara satta i edge function secrets' }, 500)
+  }
 
   try {
     const body = await req.json()
@@ -113,7 +134,7 @@ Deno.serve(async (req) => {
 
     // --- Trigga kontosynk ---
     if (action === 'sync-accounts') {
-      if (!fabricToken) throw new Error('FABRIC_API_TOKEN ej konfigurerat i edge function secrets')
+      const fabricToken = await getAzureToken(tenantId, clientId, clientSecret, 'https://api.fabric.microsoft.com/.default')
       const result = await runFabricNotebook(NOTEBOOK_SYNC_ACCOUNTS_ID, fabricToken)
       await supabase.from('sync_log').insert({
         sync_type: 'accounts_trigger',
@@ -126,7 +147,7 @@ Deno.serve(async (req) => {
 
     // --- Exportera scenario till Fabric ---
     if (action === 'export-scenario') {
-      if (!storageToken) throw new Error('FABRIC_STORAGE_TOKEN ej konfigurerat i edge function secrets')
+      const storageToken = await getAzureToken(tenantId, clientId, clientSecret, 'https://storage.azure.com/.default')
       const { scenarioId } = body
       if (!scenarioId) return json({ error: 'scenarioId krävs' }, 400)
 
