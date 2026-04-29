@@ -14,7 +14,7 @@ type EntryRow = {
     account_number: string
     name: string
     company_id: number
-    account_configs: { is_intercompany: boolean }[] | null
+    account_configs: { is_intercompany: boolean } | null
   } | null
 }
 
@@ -67,7 +67,7 @@ export default function IntercompanyPage() {
       const entries = (data ?? []) as unknown as EntryRow[]
 
       // Filtrera på intercompany-konton
-      const icEntries = entries.filter(e => e.accounts?.account_configs?.some(c => c.is_intercompany))
+      const icEntries = entries.filter(e => e.accounts?.account_configs?.is_intercompany)
 
       // Aggregera per (account_number, company_id)
       const map = new Map<string, AccountLine>()
