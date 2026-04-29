@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, CheckCircle2, XCircle, Clock, Play } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
@@ -111,7 +112,8 @@ export default function SyncPage() {
           <h2 className="text-xl font-semibold text-gray-900">Synkronisering</h2>
           <p className="text-sm text-gray-500 mt-0.5">Kontosynk från Fortnox via Fabric — körs automatiskt dagligen kl. 10:00</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <HelpButton section="admin-sync" />
           <button
             onClick={() => fetchLog(true)}
             disabled={refreshing}

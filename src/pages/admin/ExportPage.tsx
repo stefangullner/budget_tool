@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Download, CheckCircle2, XCircle } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
@@ -105,9 +106,12 @@ export default function ExportPage() {
 
   return (
     <div className="p-8 max-w-3xl">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Export</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Exportera budget-scenario till Fabric (lh_bronze/Files/forecasts/)</p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Export</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Exportera budget-scenario till Fabric (lh_bronze/Files/forecasts/)</p>
+        </div>
+        <HelpButton section="admin-export" />
       </div>
 
       {/* Export-formulär */}

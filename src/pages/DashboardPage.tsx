@@ -1,7 +1,12 @@
+import HelpButton from '@/components/HelpButton'
+
 export default function DashboardPage() {
   return (
     <div className="p-8">
-      <h2 className="text-xl font-semibold text-gray-900 mb-1">Översikt</h2>
+      <div className="flex items-start justify-between mb-1">
+        <h2 className="text-xl font-semibold text-gray-900">Översikt</h2>
+        <HelpButton section="dashboard" />
+      </div>
       <p className="text-sm text-gray-500 mb-8">Budget & utfall per bolag</p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

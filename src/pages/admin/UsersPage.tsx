@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Trash2, Plus, X, UserPlus, Shield, Building2, MapPin } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
@@ -194,12 +195,15 @@ export default function UsersPage() {
           <h1 className="text-xl font-semibold text-gray-900">Användare</h1>
           <p className="text-sm text-gray-500 mt-0.5">Hantera användare, roller och behörigheter</p>
         </div>
-        <button
-          onClick={() => { setShowInvite(true); setInviteError(null) }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors"
-        >
-          <UserPlus size={14} /> Bjud in
-        </button>
+        <div className="flex items-center gap-2">
+          <HelpButton section="admin-users" />
+          <button
+            onClick={() => { setShowInvite(true); setInviteError(null) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors"
+          >
+            <UserPlus size={14} /> Bjud in
+          </button>
+        </div>
       </div>
 
       {/* Invite dialog */}

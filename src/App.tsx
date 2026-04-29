@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { HelpProvider } from '@/context/HelpContext'
 import LoginPage from '@/pages/LoginPage'
 import SetPasswordPage from '@/pages/SetPasswordPage'
 import DashboardPage from '@/pages/DashboardPage'
@@ -37,6 +38,7 @@ export default function App() {
   }
 
   return (
+    <HelpProvider>
     <Layout>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -62,5 +64,6 @@ export default function App() {
         } />
       </Routes>
     </Layout>
+    </HelpProvider>
   )
 }

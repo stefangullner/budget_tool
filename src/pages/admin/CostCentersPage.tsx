@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Check, X, Pencil, Plus } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
@@ -105,12 +106,15 @@ export default function CostCentersPage() {
           <h1 className="text-xl font-semibold text-gray-900">Kostnadsställen</h1>
           <p className="text-sm text-gray-500 mt-0.5">Aktivera, inaktivera och redigera kostnadsställen</p>
         </div>
-        <button
-          onClick={() => { setShowNewRow(true); setEditingId(null) }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors"
-        >
-          <Plus size={14} /> Nytt KS
-        </button>
+        <div className="flex items-center gap-2">
+          <HelpButton section="admin-cost-centers" />
+          <button
+            onClick={() => { setShowNewRow(true); setEditingId(null) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors"
+          >
+            <Plus size={14} /> Nytt KS
+          </button>
+        </div>
       </div>
 
       {/* Company tabs */}

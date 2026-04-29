@@ -3,6 +3,7 @@ import {
   CheckCircle2, Circle, ChevronDown, ChevronRight,
   Pencil, Check, X, Trash2, Plus, Lock
 } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { useAdminScenarios, type LockDetail } from '@/hooks/useAdminScenarios'
 import NewScenarioDialog from '@/components/NewScenarioDialog'
@@ -125,12 +126,15 @@ export default function ScenariosAdminPage() {
           <h2 className="text-xl font-semibold text-gray-900">Scenarier</h2>
           <p className="text-sm text-gray-500 mt-0.5">Hantera scenarier per bolag</p>
         </div>
-        <button
-          onClick={() => setShowNewScenario(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700"
-        >
-          <Plus size={14} /> Nytt scenario
-        </button>
+        <div className="flex items-center gap-2">
+          <HelpButton section="admin-scenarios" />
+          <button
+            onClick={() => setShowNewScenario(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700"
+          >
+            <Plus size={14} /> Nytt scenario
+          </button>
+        </div>
       </div>
 
       {/* Company tabs */}

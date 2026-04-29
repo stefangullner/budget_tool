@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { CheckCircle2, AlertTriangle } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
@@ -106,9 +107,12 @@ export default function IntercompanyPage() {
 
   return (
     <div className="p-8 max-w-6xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Intercompany-avstämning</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Budgeterade intercompany-belopp per konto — netto ska vara noll</p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Intercompany-avstämning</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Budgeterade intercompany-belopp per konto — netto ska vara noll</p>
+        </div>
+        <HelpButton section="intercompany" />
       </div>
 
       {/* Kontroller */}

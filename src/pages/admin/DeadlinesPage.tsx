@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Calendar, Check } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, Scenario } from '@/types'
@@ -61,7 +62,10 @@ export default function DeadlinesPage() {
 
   return (
     <div className="p-8">
-      <h2 className="text-xl font-semibold text-gray-900 mb-1">Deadlines</h2>
+      <div className="flex items-start justify-between mb-1">
+        <h2 className="text-xl font-semibold text-gray-900">Deadlines</h2>
+        <HelpButton section="admin-deadlines" />
+      </div>
       <p className="text-sm text-gray-500 mb-6">Sätt deadline per scenario — visas som varningsbanner för budgetansvariga</p>
 
       {/* Company tabs */}

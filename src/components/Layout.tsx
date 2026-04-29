@@ -4,6 +4,7 @@ import { LayoutDashboard, Building2, BookOpen, ShieldCheck, LogOut, ArrowLeftRig
 import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { cn } from '@/lib/utils'
+import HelpPanel from '@/components/HelpPanel'
 
 const navItems = [
   { to: '/dashboard',    label: 'Översikt',     icon: LayoutDashboard },
@@ -82,6 +83,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       <main className="flex-1 overflow-auto">
         {children}
       </main>
+
+      <HelpPanel />
     </div>
   )
 }

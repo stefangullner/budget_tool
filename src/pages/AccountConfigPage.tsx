@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import { Check, X, Clock, ArrowLeftRight } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, Account, AccountConfig } from '@/types'
@@ -175,12 +176,15 @@ export default function AccountConfigPage() {
             Välj vilka konton som ska budgeteras per bolag
           </p>
         </div>
-        {lastSynced && (
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <Clock size={12} />
-            Senast synkad {new Date(lastSynced).toLocaleString('sv-SE')}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <HelpButton section="accounts" />
+          {lastSynced && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <Clock size={12} />
+              Senast synkad {new Date(lastSynced).toLocaleString('sv-SE')}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Company tabs */}

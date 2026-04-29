@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, LayoutList, Table2, Clock, AlertTriangle } from 'lucide-react'
+import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
 import { useRole } from '@/hooks/useRole'
@@ -103,7 +104,9 @@ export default function BudgetPage() {
           <h1 className="text-xl font-semibold text-gray-900">Budget</h1>
           <p className="text-sm text-gray-500 mt-0.5">Mata in budget per konto och kostnadsställe</p>
         </div>
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex items-center gap-2">
+          <HelpButton section="budget" />
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           <button
             onClick={() => setView('matrix')}
             className={cn(
@@ -124,6 +127,7 @@ export default function BudgetPage() {
             <LayoutList size={13} />
             Översikt
           </button>
+        </div>
         </div>
       </div>
 
