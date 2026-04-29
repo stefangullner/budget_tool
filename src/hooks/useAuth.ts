@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Session } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { supabase, initialHashType } from '@/lib/supabase'
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [needsPasswordSet, setNeedsPasswordSet] = useState(
+    initialHashType === 'invite' || initialHashType === 'recovery',
+  )
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -20,6 +23,7 @@ export function useAuth() {
   }, [])
 
   const signOut = () => supabase.auth.signOut()
+  const clearPasswordSet = () => setNeedsPasswordSet(false)
 
-  return { session, loading, signOut }
+  return { session, loading, signOut, needsPasswordSet, clearPasswordSet }
 }

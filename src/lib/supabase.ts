@@ -8,3 +8,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// Capture hash type before Supabase clears it on client init
+export const initialHashType = new URLSearchParams(window.location.hash.slice(1)).get('type')

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import LoginPage from '@/pages/LoginPage'
+import SetPasswordPage from '@/pages/SetPasswordPage'
 import DashboardPage from '@/pages/DashboardPage'
 import AccountConfigPage from '@/pages/AccountConfigPage'
 import BudgetPage from '@/pages/BudgetPage'
@@ -17,7 +18,7 @@ import SyncPage from '@/pages/admin/SyncPage'
 import ExportPage from '@/pages/admin/ExportPage'
 
 export default function App() {
-  const { session, loading } = useAuth()
+  const { session, loading, needsPasswordSet, clearPasswordSet } = useAuth()
 
   if (loading) {
     return (
@@ -29,6 +30,10 @@ export default function App() {
 
   if (!session) {
     return <LoginPage />
+  }
+
+  if (needsPasswordSet) {
+    return <SetPasswordPage onDone={clearPasswordSet} />
   }
 
   return (
