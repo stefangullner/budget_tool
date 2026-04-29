@@ -3,7 +3,7 @@ import { LayoutList, Table2, Clock, AlertTriangle } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
-import { useRole } from '@/hooks/useRole'
+
 import BudgetMatrix from '@/components/BudgetMatrix'
 import BudgetOverview from '@/components/BudgetOverview'
 
@@ -17,7 +17,7 @@ export default function BudgetPage() {
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null)
 
   const [view, setView] = useState<'matrix' | 'overview'>('matrix')
-  const { isAdmin } = useRole()
+
   const [userId, setUserId] = useState<string>('')
 
   useEffect(() => {
