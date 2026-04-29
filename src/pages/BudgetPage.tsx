@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Plus, LayoutList, Table2, Clock, AlertTriangle } from 'lucide-react'
+import { LayoutList, Table2, Clock, AlertTriangle } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
 import { useRole } from '@/hooks/useRole'
 import BudgetMatrix from '@/components/BudgetMatrix'
 import BudgetOverview from '@/components/BudgetOverview'
-import NewScenarioDialog from '@/components/NewScenarioDialog'
+
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
 
@@ -15,7 +15,7 @@ export default function BudgetPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null)
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null)
-  const [showNewScenario, setShowNewScenario] = useState(false)
+
   const [view, setView] = useState<'matrix' | 'overview'>('matrix')
   const { isAdmin } = useRole()
   const [userId, setUserId] = useState<string>('')
@@ -44,7 +44,6 @@ export default function BudgetPage() {
     loading,
     upsertEntry,
     toggleLock,
-    createScenario,
   } = useBudget(selectedCompanyId, selectedScenarioId, selectedCostCenterId)
 
   // Auto-select first scenario and first KS when company changes
@@ -66,29 +65,6 @@ export default function BudgetPage() {
   }, [costCenters, selectedCostCenterId])
 
   const selectedScenario = scenarios.find((s) => s.id === selectedScenarioId) ?? null
-
-  async function handleCreateScenario(
-    name: string,
-    startYear: number,
-    startMonth: number,
-    endYear: number,
-    endMonth: number,
-    copyFromId?: number,
-    _companyIds?: number[],
-  ) {
-    if (!selectedCompanyId) return
-    const newScenario = await createScenario(
-      selectedCompanyId,
-      name,
-      startYear,
-      startMonth,
-      endYear,
-      endMonth,
-      userId,
-      copyFromId,
-    )
-    if (newScenario) setSelectedScenarioId(newScenario.id)
-  }
 
   function formatScenarioPeriod(s: typeof scenarios[0]) {
     const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
@@ -167,15 +143,6 @@ export default function BudgetPage() {
                 </option>
               ))}
             </select>
-            {isAdmin && (
-              <button
-                onClick={() => setShowNewScenario(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 whitespace-nowrap"
-              >
-                <Plus size={14} />
-                Nytt
-              </button>
-            )}
           </div>
         </div>
 
@@ -286,13 +253,6 @@ export default function BudgetPage() {
         />
       ))}
 
-      {showNewScenario && (
-        <NewScenarioDialog
-          scenarios={scenarios}
-          onClose={() => setShowNewScenario(false)}
-          onCreate={handleCreateScenario}
-        />
-      )}
     </div>
   )
 }
