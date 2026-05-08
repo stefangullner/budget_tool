@@ -13,12 +13,11 @@ const ACCOUNT_TYPE_LABELS = {
   balance: 'Balans',
 }
 
-const SECTIONS = ['Intäkter', 'Personal', 'Lokaler', 'Marknadsföring', 'Administration', 'Övrigt']
-
 export default function AccountConfigPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
   const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [sections, setSections] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [lastSynced, setLastSynced] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -35,7 +34,7 @@ export default function AccountConfigPage() {
     supabase
       .from('sync_log')
       .select('synced_at')
-      .eq('sync_type', 'accounts')
+      .in('sync_type', ['accounts', 'dim_account'])
       .eq('status', 'success')
       .order('synced_at', { ascending: false })
       .limit(1)
@@ -47,12 +46,23 @@ export default function AccountConfigPage() {
 
   const loadAccounts = useCallback(async (companyId: number) => {
     setLoading(true)
-    const { data } = await supabase
-      .from('accounts')
-      .select('*, config:account_configs(*)')
-      .eq('company_id', companyId)
-      .order('account_number')
-    setAccounts((data ?? []) as AccountRow[])
+    const [{ data: accountData }, { data: sectionData }] = await Promise.all([
+      supabase
+        .from('accounts')
+        .select('*, config:account_configs(*)')
+        .eq('company_id', companyId)
+        .order('account_number'),
+      supabase
+        .from('account_configs')
+        .select('section, accounts!inner(company_id)')
+        .eq('accounts.company_id', companyId)
+        .not('section', 'is', null),
+    ])
+    setAccounts((accountData ?? []) as AccountRow[])
+    const uniqueSections = [...new Set(
+      (sectionData ?? []).map((r: any) => r.section as string).filter(Boolean)
+    )].sort()
+    setSections(uniqueSections)
     setLoading(false)
   }, [])
 
@@ -162,7 +172,7 @@ export default function AccountConfigPage() {
 
   const budgetableCount = accounts.filter((a) => a.config?.is_budgetable).length
 
-  const SECTION_KEYS = [...SECTIONS, null] as (string | null)[]
+  const SECTION_KEYS = [...sections, null] as (string | null)[]
   const groupedSections = SECTION_KEYS
     .map(s => ({ section: s, rows: filtered.filter(a => (a.config?.section ?? null) === s) }))
     .filter(g => g.rows.length > 0)
@@ -307,7 +317,7 @@ export default function AccountConfigPage() {
                           className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 bg-white"
                         >
                           <option value="">—</option>
-                          {SECTIONS.map((s) => (
+                          {sections.map((s) => (
                             <option key={s} value={s}>{s}</option>
                           ))}
                         </select>
