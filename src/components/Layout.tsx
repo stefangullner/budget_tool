@@ -1,6 +1,6 @@
 import { useState, ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Building2, BookOpen, ShieldCheck, LogOut, ArrowLeftRight, ChevronLeft, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Building2, ShieldCheck, LogOut, ArrowLeftRight, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { cn } from '@/lib/utils'
@@ -9,7 +9,6 @@ import HelpPanel from '@/components/HelpPanel'
 const navItems = [
   { to: '/dashboard',    label: 'Översikt',     icon: LayoutDashboard },
   { to: '/budget',       label: 'Budget',       icon: Building2 },
-  { to: '/accounts',     label: 'Konton',       icon: BookOpen },
   { to: '/intercompany', label: 'Intercompany', icon: ArrowLeftRight },
 ]
 

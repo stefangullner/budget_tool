@@ -56,18 +56,16 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
       .then(({ data }) => setCostCenters((data ?? []) as CostCenter[]))
   }, [companyId])
 
-  // Load accounts (budgetable only) for company
+  // Load accounts (budgetable only) for company — filter at DB level using inner join
   useEffect(() => {
     if (!companyId) return
     supabase
       .from('accounts')
-      .select('*, config:account_configs(*)')
+      .select('*, config:account_configs!inner(*)')
       .eq('company_id', companyId)
+      .eq('account_configs.is_budgetable', true)
       .order('account_number')
-      .then(({ data }) => {
-        const rows = ((data ?? []) as AccountRow[]).filter((a) => a.config?.is_budgetable)
-        setAccounts(rows)
-      })
+      .then(({ data }) => setAccounts((data ?? []) as AccountRow[]))
   }, [companyId])
 
   const loadEntries = useCallback(async (scenarioId: number, costCenterId: number) => {
