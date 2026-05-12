@@ -11,7 +11,6 @@ import PercentageDialog from '@/components/PercentageDialog'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
-const SECTION_ORDER = ['Intäkter', 'Personal', 'Lokaler', 'Marknadsföring', 'Administration', 'Övrigt', null]
 
 interface Props {
   scenario: Scenario
@@ -86,9 +85,19 @@ export default function BudgetMatrix({
     return accounts.reduce((sum, a) => sum + getRowTotal(a.id), 0)
   }
 
+  // Build section order dynamically from the accounts in this view
+  const sectionOrder: (string | null)[] = [
+    ...new Set(
+      accounts
+        .map((a) => a.config?.section ?? null)
+        .filter((s): s is string => s !== null)
+    ),
+  ].sort()
+  sectionOrder.push(null) // accounts without section at the bottom
+
   // Group accounts by section
-  const grouped = SECTION_ORDER.map((section) => ({
-    section: section ?? 'Övrigt',
+  const grouped = sectionOrder.map((section) => ({
+    section: section ?? '— Ingen sektion',
     rows: accounts.filter((a) => (a.config?.section ?? null) === section),
   })).filter((g) => g.rows.length > 0)
 
