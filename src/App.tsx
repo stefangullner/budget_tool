@@ -17,6 +17,7 @@ import CostCentersPage from '@/pages/admin/CostCentersPage'
 import DeadlinesPage from '@/pages/admin/DeadlinesPage'
 import SyncPage from '@/pages/admin/SyncPage'
 import ExportPage from '@/pages/admin/ExportPage'
+import CompaniesPage from '@/pages/admin/CompaniesPage'
 
 export default function App() {
   const { session, loading, needsPasswordSet, clearPasswordSet } = useAuth()
@@ -55,6 +56,7 @@ export default function App() {
                 <Route path="scenarios"    element={<ScenariosAdminPage />} />
                 <Route path="accounts"     element={<AccountsAdminPage />} />
                 <Route path="cost-centers" element={<CostCentersPage />} />
+                <Route path="companies"    element={<CompaniesPage />} />
                 <Route path="deadlines"    element={<DeadlinesPage />} />
                 <Route path="sync"         element={<SyncPage />} />
                 <Route path="export"       element={<ExportPage />} />

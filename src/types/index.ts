@@ -5,6 +5,7 @@ export interface Company {
   name: string
   org_number: string
   fiscal_year_start: number
+  fabric_key: string | null
 }
 
 export interface CostCenter {
