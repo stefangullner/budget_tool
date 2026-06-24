@@ -37,12 +37,15 @@ export default function BudgetPage() {
     costCenters,
     accounts,
     entries,
+    icEntries,
     actuals,
     prevActuals,
     locks,
     saving,
+    icSaving,
     loading,
     upsertEntry,
+    upsertICEntry,
     toggleLock,
   } = useBudget(selectedCompanyId, selectedScenarioId, selectedCostCenterId)
 
@@ -239,15 +242,21 @@ export default function BudgetPage() {
           scenario={selectedScenario}
           accounts={accounts}
           entries={entries}
+          icEntries={icEntries}
           actuals={actuals}
           prevActuals={prevActuals}
           locks={locks}
           saving={saving}
+          icSaving={icSaving}
           costCenterId={selectedCostCenterId}
           companyId={selectedCompanyId!}
+          companies={companies}
           userId={userId}
           onCellChange={(accountId, year, month, amount) =>
             upsertEntry(accountId, year, month, amount, userId)
+          }
+          onICCellChange={(accountId, counterpartId, year, month, amount) =>
+            upsertICEntry(accountId, counterpartId, year, month, amount, userId)
           }
           onToggleLock={() => toggleLock(selectedCostCenterId, userId)}
         />

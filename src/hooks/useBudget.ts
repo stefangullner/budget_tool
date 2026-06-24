@@ -27,10 +27,12 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
   const [accounts, setAccounts] = useState<AccountRow[]>([])
   const [entries, setEntries] = useState<Map<string, number>>(new Map())
+  const [icEntries, setIcEntries] = useState<Map<string, number>>(new Map())
   const [actuals, setActuals] = useState<Map<string, number>>(new Map())
   const [prevActuals, setPrevActuals] = useState<Map<string, number>>(new Map())
   const [locks, setLocks] = useState<ScenarioLock[]>([])
   const [saving, setSaving] = useState<Set<string>>(new Set())
+  const [icSaving, setIcSaving] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
 
   // Load scenarios for company
@@ -72,15 +74,21 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     setLoading(true)
     const { data } = await supabase
       .from('budget_entries')
-      .select('account_id, year, month, amount')
+      .select('account_id, year, month, amount, counterpart_company_id')
       .eq('scenario_id', scenarioId)
       .eq('cost_center_id', costCenterId)
 
     const map = new Map<string, number>()
+    const icMap = new Map<string, number>()
     for (const row of data ?? []) {
-      map.set(periodKey(row.year, row.month) + ':' + row.account_id, row.amount)
+      if (row.counterpart_company_id) {
+        icMap.set(periodKey(row.year, row.month) + ':' + row.account_id + ':' + row.counterpart_company_id, row.amount)
+      } else {
+        map.set(periodKey(row.year, row.month) + ':' + row.account_id, row.amount)
+      }
     }
     setEntries(map)
+    setIcEntries(icMap)
     setLoading(false)
   }, [])
 
@@ -99,7 +107,6 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
 
     const map = new Map<string, number>()
     for (const row of data ?? []) {
-      // Only include periods that are in the past (have actual data)
       const isPast = row.year < currentYear || (row.year === currentYear && row.month <= currentMonth)
       if (isPast) {
         map.set(periodKey(row.year, row.month) + ':' + row.account_id, row.amount)
@@ -117,7 +124,6 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
       .gte('year', scenario.start_year - 1)
       .lte('year', scenario.end_year - 1)
 
-    // Store keyed as budget_year:month:accountId (i.e. shift year +1) for easy lookup
     const map = new Map<string, number>()
     for (const row of data ?? []) {
       map.set(periodKey(row.year + 1, row.month) + ':' + row.account_id, row.amount)
@@ -174,13 +180,50 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
         year,
         month,
         amount,
+        counterpart_company_id: null,
         updated_by: userId,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: 'scenario_id,account_id,cost_center_id,year,month' },
+      { onConflict: 'scenario_id,account_id,cost_center_id,year,month,counterpart_company_id' },
     )
 
     setSaving((prev) => {
+      const next = new Set(prev)
+      next.delete(key)
+      return next
+    })
+  }
+
+  async function upsertICEntry(
+    accountId: number,
+    counterpartId: number,
+    year: number,
+    month: number,
+    amount: number,
+    userId: string,
+  ) {
+    if (!scenarioId || !costCenterId) return
+    const key = periodKey(year, month) + ':' + accountId + ':' + counterpartId
+
+    setIcSaving((prev) => new Set(prev).add(key))
+    setIcEntries((prev) => new Map(prev).set(key, amount))
+
+    await supabase.from('budget_entries').upsert(
+      {
+        scenario_id: scenarioId,
+        account_id: accountId,
+        cost_center_id: costCenterId,
+        year,
+        month,
+        amount,
+        counterpart_company_id: counterpartId,
+        updated_by: userId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'scenario_id,account_id,cost_center_id,year,month,counterpart_company_id' },
+    )
+
+    setIcSaving((prev) => {
       const next = new Set(prev)
       next.delete(key)
       return next
@@ -240,7 +283,6 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     const newScenario = data as Scenario
     setScenarios((prev) => [newScenario, ...prev])
 
-    // Copy entries from source scenario if specified
     if (copyFromScenarioId) {
       const { data: sourceEntries } = await supabase
         .from('budget_entries')
@@ -260,6 +302,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
             year: e.year,
             month: e.month,
             amount: e.amount,
+            counterpart_company_id: e.counterpart_company_id ?? null,
             updated_by: userId,
           }))
 
@@ -277,12 +320,15 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     costCenters,
     accounts,
     entries,
+    icEntries,
     actuals,
     prevActuals,
     locks,
     saving,
+    icSaving,
     loading,
     upsertEntry,
+    upsertICEntry,
     toggleLock,
     createScenario,
   }

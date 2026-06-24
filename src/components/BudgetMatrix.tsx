@@ -1,29 +1,32 @@
-import { useRef, useCallback, Fragment, useState, useEffect } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle } from 'lucide-react'
+import { useRef, useCallback, Fragment, useState, useEffect, useMemo } from 'react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
-import type { Scenario, ScenarioLock } from '@/types'
+import type { Scenario, ScenarioLock, Company } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
 import CopyRowDialog from '@/components/CopyRowDialog'
 import PercentageDialog from '@/components/PercentageDialog'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
-
 interface Props {
   scenario: Scenario
   accounts: AccountRow[]
   entries: Map<string, number>
+  icEntries: Map<string, number>
   actuals: Map<string, number>
   prevActuals: Map<string, number>
   locks: ScenarioLock[]
   saving: Set<string>
+  icSaving: Set<string>
   costCenterId: number
   companyId: number
+  companies: Company[]
   userId: string
   onCellChange: (accountId: number, year: number, month: number, amount: number) => void
+  onICCellChange: (accountId: number, counterpartId: number, year: number, month: number, amount: number) => void
   onToggleLock: () => void
 }
 
@@ -42,14 +45,18 @@ export default function BudgetMatrix({
   scenario,
   accounts,
   entries,
+  icEntries,
   actuals,
   prevActuals,
   locks,
   saving,
+  icSaving,
   costCenterId,
   companyId,
+  companies,
   userId,
   onCellChange,
+  onICCellChange,
   onToggleLock,
 }: Props) {
   const periods = scenarioPeriods(scenario)
@@ -67,10 +74,63 @@ export default function BudgetMatrix({
     return periodKey(year, month) + ':' + accountId
   }
 
+  // Derive counterparts present in icEntries per account
+  const icCounterpartsFromEntries = useMemo(() => {
+    const map = new Map<number, Set<number>>()
+    for (const key of icEntries.keys()) {
+      const parts = key.split(':')
+      const accountId = parseInt(parts[1])
+      const counterpartId = parseInt(parts[2])
+      if (!map.has(accountId)) map.set(accountId, new Set())
+      map.get(accountId)!.add(counterpartId)
+    }
+    return map
+  }, [icEntries])
+
+  const [expandedICAccounts, setExpandedICAccounts] = useState<Set<number>>(new Set())
+  const [addedCounterparts, setAddedCounterparts] = useState<Map<number, Set<number>>>(new Map())
+
+  function getCounterparts(accountId: number): number[] {
+    const fromEntries = icCounterpartsFromEntries.get(accountId) ?? new Set<number>()
+    const fromAdded = addedCounterparts.get(accountId) ?? new Set<number>()
+    return [...new Set([...fromEntries, ...fromAdded])].sort((a, b) => a - b)
+  }
+
+  function toggleICExpand(accountId: number) {
+    setExpandedICAccounts((prev) => {
+      const next = new Set(prev)
+      if (next.has(accountId)) next.delete(accountId)
+      else next.add(accountId)
+      return next
+    })
+  }
+
+  function addCounterpart(accountId: number, counterpartId: number) {
+    setAddedCounterparts((prev) => {
+      const next = new Map(prev)
+      const existing = next.get(accountId) ?? new Set<number>()
+      next.set(accountId, new Set([...existing, counterpartId]))
+      return next
+    })
+    setExpandedICAccounts((prev) => new Set([...prev, accountId]))
+  }
+
   function getValue(accountId: number, year: number, month: number): number {
+    const account = accounts.find((a) => a.id === accountId)
+    if (account?.config?.is_intercompany) {
+      return getCounterparts(accountId).reduce((sum, cpId) => {
+        return sum + (icEntries.get(periodKey(year, month) + ':' + accountId + ':' + cpId) ?? 0)
+      }, 0)
+    }
     const key = cellKey(accountId, year, month)
     if (isPastPeriod(year, month)) return actuals.get(key) ?? 0
     return entries.get(key) ?? 0
+  }
+
+  function getICSubRowTotal(accountId: number, counterpartId: number): number {
+    return periods.reduce((sum, { year, month }) => {
+      return sum + (icEntries.get(periodKey(year, month) + ':' + accountId + ':' + counterpartId) ?? 0)
+    }, 0)
   }
 
   function getRowTotal(accountId: number): number {
@@ -85,7 +145,6 @@ export default function BudgetMatrix({
     return accounts.reduce((sum, a) => sum + getRowTotal(a.id), 0)
   }
 
-  // Build section order dynamically from the accounts in this view
   const sectionOrder: (string | null)[] = [
     ...new Set(
       accounts
@@ -93,9 +152,8 @@ export default function BudgetMatrix({
         .filter((s): s is string => s !== null)
     ),
   ].sort()
-  sectionOrder.push(null) // accounts without section at the bottom
+  sectionOrder.push(null)
 
-  // Group accounts by section
   const grouped = sectionOrder.map((section) => ({
     section: section ?? '— Ingen sektion',
     rows: accounts.filter((a) => (a.config?.section ?? null) === section),
@@ -106,13 +164,12 @@ export default function BudgetMatrix({
   const [copyTarget, setCopyTarget] = useState<AccountRow | null>(null)
   const [percentTarget, setPercentTarget] = useState<AccountRow | null>(null)
   const [deviationEnabled, setDeviationEnabled] = useState(false)
-  const [comments, setComments] = useState<Map<number, string>>(new Map()) // accountId → comment
+  const [comments, setComments] = useState<Map<number, string>>(new Map())
   const [openCommentId, setOpenCommentId] = useState<number | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
 
   const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
 
-  // Load row-level comments (month=null) for this scenario+costCenter
   useEffect(() => {
     supabase
       .from('budget_comments')
@@ -129,7 +186,6 @@ export default function BudgetMatrix({
 
   async function saveComment(accountId: number, comment: string) {
     const trimmed = comment.trim()
-    // Always delete existing row-level comment first
     await supabase
       .from('budget_comments')
       .delete()
@@ -221,13 +277,15 @@ export default function BudgetMatrix({
     [accounts, periods],
   )
 
-  // Progress: accounts with at least one non-zero future entry
   const filledAccounts = accounts.filter((a) =>
-    futurePeriods.some((p) => (entries.get(periodKey(p.year, p.month) + ':' + a.id) ?? 0) !== 0),
+    futurePeriods.some((p) => getValue(a.id, p.year, p.month) !== 0),
   ).length
   const totalAccounts = accounts.length
   const progressPct = totalAccounts > 0 ? Math.round((filledAccounts / totalAccounts) * 100) : 0
   const isDone = filledAccounts === totalAccounts && totalAccounts > 0
+
+  // Companies available as counterparts (all except current company)
+  const counterpartOptions = companies.filter((c) => c.id !== companyId)
 
   return (
     <div>
@@ -311,7 +369,6 @@ export default function BudgetMatrix({
 
               return (
                 <Fragment key={section}>
-                  {/* Section header — always visible, clickable */}
                   <tr
                     className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100 transition-colors"
                     onClick={() => toggleSection(section)}
@@ -355,156 +412,284 @@ export default function BudgetMatrix({
                     </td>
                   </tr>
 
-                  {/* Account rows — hidden when collapsed */}
                   {!isCollapsed && rows.map((account) => {
+                    const isIC = account.config?.is_intercompany === true
                     const globalRowIdx = accounts.indexOf(account)
                     const rowTotal = getRowTotal(account.id)
                     const hasComment = comments.has(account.id)
                     const isCommentOpen = openCommentId === account.id
+                    const isICExpanded = expandedICAccounts.has(account.id)
+                    const counterparts = getCounterparts(account.id)
+                    const availableCounterparts = counterpartOptions.filter(
+                      (c) => !counterparts.includes(c.id)
+                    )
+
                     return (
                       <Fragment key={account.id}>
-                      <tr className="group border-t border-gray-100 hover:bg-gray-50/50">
-                        <td className="sticky left-0 bg-white px-3 py-1 z-10 hover:bg-gray-50/50">
-                          <div className="flex items-center justify-between gap-1">
-                            <div className="min-w-0">
-                              <span className="font-mono text-gray-400 mr-2">{account.account_number}</span>
-                              <span className="text-gray-700">{account.name}</span>
-                            </div>
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              {/* Comment button — always visible if comment exists, else hover-only */}
-                              <button
-                                onClick={() => {
-                                  if (isCommentOpen) {
-                                    setOpenCommentId(null)
-                                  } else {
-                                    setCommentDraft(comments.get(account.id) ?? '')
-                                    setOpenCommentId(account.id)
-                                  }
-                                }}
-                                title="Kommentar"
-                                className={cn(
-                                  'p-1 rounded transition-colors',
-                                  hasComment
-                                    ? 'text-brand-500 hover:text-brand-700 hover:bg-brand-50'
-                                    : 'invisible group-hover:visible text-gray-400 hover:text-brand-600 hover:bg-brand-50',
+                        <tr className={cn(
+                          'group border-t border-gray-100',
+                          isIC ? 'hover:bg-blue-50/30 bg-blue-50/10' : 'hover:bg-gray-50/50'
+                        )}>
+                          <td className={cn(
+                            'sticky left-0 px-3 py-1 z-10',
+                            isIC ? 'bg-blue-50/10 hover:bg-blue-50/30' : 'bg-white hover:bg-gray-50/50'
+                          )}>
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex items-center gap-1 min-w-0">
+                                {isIC && (
+                                  <button
+                                    onClick={() => toggleICExpand(account.id)}
+                                    className="text-blue-400 hover:text-blue-600 shrink-0"
+                                  >
+                                    {isICExpanded
+                                      ? <ChevronDown size={12} />
+                                      : <ChevronRight size={12} />}
+                                  </button>
                                 )}
-                              >
-                                <MessageSquare size={12} />
-                              </button>
-                              {!isLocked && futurePeriods.length > 0 && (
-                                <div className="invisible group-hover:visible flex items-center gap-0.5">
+                                <span className="font-mono text-gray-400 mr-1">{account.account_number}</span>
+                                <span className="text-gray-700">{account.name}</span>
+                                {isIC && (
+                                  <span className="ml-1 px-1 py-0.5 rounded text-blue-500 bg-blue-50 text-xs font-medium shrink-0">IC</span>
+                                )}
+                              </div>
+                              {!isIC && (
+                                <div className="flex items-center gap-0.5 shrink-0">
                                   <button
-                                    onClick={() => setDistributeTarget(account)}
-                                    title="Fördela årsbelopp"
-                                    className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                                  >
-                                    <Calculator size={12} />
-                                  </button>
-                                  <button
-                                    onClick={() => setCopyTarget(account)}
-                                    title="Kopiera rad"
-                                    className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                                  >
-                                    <Copy size={12} />
-                                  </button>
-                                  <button
-                                    onClick={() => setPercentTarget(account)}
-                                    title="Procentuell förändring"
-                                    className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                                  >
-                                    <Percent size={12} />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        {periods.map(({ year, month }, periodIdx) => {
-                          const isPast = isPastPeriod(year, month)
-                          const key = cellKey(account.id, year, month)
-                          const value = getValue(account.id, year, month)
-                          const isSaving = saving.has(key)
-                          const devClass = !isPast ? deviationClass(account.id, year, month) : ''
-                          return (
-                            <td key={`${year}-${month}`} className="px-1 py-0.5">
-                              {isPast || isLocked ? (
-                                <div className={cn(
-                                  'px-2 py-1.5 text-right rounded',
-                                  isPast ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
-                                )}>
-                                  {fmt(value)}
-                                </div>
-                              ) : (
-                                <div className="relative">
-                                  <input
-                                    key={`${key}-${value}`}
-                                    ref={(el) => {
-                                      if (el) inputRefs.current.set(key, el)
-                                      else inputRefs.current.delete(key)
+                                    onClick={() => {
+                                      if (isCommentOpen) {
+                                        setOpenCommentId(null)
+                                      } else {
+                                        setCommentDraft(comments.get(account.id) ?? '')
+                                        setOpenCommentId(account.id)
+                                      }
                                     }}
-                                    type="text"
-                                    defaultValue={value !== 0 ? fmt(value) : ''}
-                                    onBlur={(e) => {
-                                      const parsed = parseSEK(e.target.value)
-                                      onCellChange(account.id, year, month, parsed)
-                                      e.target.value = parsed !== 0 ? fmt(parsed) : ''
-                                    }}
-                                    onFocus={(e) => {
-                                      const raw = entries.get(key) ?? 0
-                                      e.target.value = raw !== 0 ? String(raw) : ''
-                                      e.target.select()
-                                    }}
-                                    onKeyDown={(e) => handleKeyDown(e, globalRowIdx, periodIdx)}
+                                    title="Kommentar"
                                     className={cn(
-                                      'w-full px-2 py-1.5 text-right rounded border focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white text-gray-900',
-                                      devClass || 'border-transparent hover:border-gray-200',
+                                      'p-1 rounded transition-colors',
+                                      hasComment
+                                        ? 'text-brand-500 hover:text-brand-700 hover:bg-brand-50'
+                                        : 'invisible group-hover:visible text-gray-400 hover:text-brand-600 hover:bg-brand-50',
                                     )}
-                                  />
-                                  {isSaving && (
-                                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
-                                      <Loader2 size={10} className="animate-spin text-gray-300" />
+                                  >
+                                    <MessageSquare size={12} />
+                                  </button>
+                                  {!isLocked && futurePeriods.length > 0 && (
+                                    <div className="invisible group-hover:visible flex items-center gap-0.5">
+                                      <button
+                                        onClick={() => setDistributeTarget(account)}
+                                        title="Fördela årsbelopp"
+                                        className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                      >
+                                        <Calculator size={12} />
+                                      </button>
+                                      <button
+                                        onClick={() => setCopyTarget(account)}
+                                        title="Kopiera rad"
+                                        className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                      >
+                                        <Copy size={12} />
+                                      </button>
+                                      <button
+                                        onClick={() => setPercentTarget(account)}
+                                        title="Procentuell förändring"
+                                        className="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                                      >
+                                        <Percent size={12} />
+                                      </button>
                                     </div>
                                   )}
                                 </div>
                               )}
-                            </td>
-                          )
-                        })}
-                        <td className="px-3 py-1 text-right font-medium text-gray-700 bg-gray-50 border-l border-gray-200">
-                          {fmt(rowTotal)}
-                        </td>
-                      </tr>
-                      {/* Inline comment row */}
-                      {isCommentOpen && (
-                        <tr className="border-t border-brand-100 bg-brand-50/30">
-                          <td className="sticky left-0 bg-brand-50/30 px-3 py-2 z-10" colSpan={periods.length + 2}>
-                            <div className="flex items-start gap-2">
-                              <MessageSquare size={12} className="text-brand-400 mt-2 shrink-0" />
-                              <textarea
-                                autoFocus
-                                value={commentDraft}
-                                onChange={(e) => setCommentDraft(e.target.value)}
-                                onBlur={() => saveComment(account.id, commentDraft)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') setOpenCommentId(null)
-                                  if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault()
-                                    saveComment(account.id, commentDraft)
-                                  }
-                                }}
-                                placeholder="Skriv en kommentar… (Enter för att spara, Esc för att avbryta)"
-                                rows={2}
-                                className="flex-1 text-xs px-2 py-1.5 border border-brand-200 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-brand-400 bg-white text-gray-700 placeholder-gray-400"
-                              />
                             </div>
                           </td>
+
+                          {periods.map(({ year, month }, periodIdx) => {
+                            if (isIC) {
+                              // IC parent row: read-only sum
+                              return (
+                                <td key={`${year}-${month}`} className="px-1 py-0.5">
+                                  <div className="px-2 py-1.5 text-right text-gray-500 tabular-nums">
+                                    {fmt(getValue(account.id, year, month))}
+                                  </div>
+                                </td>
+                              )
+                            }
+
+                            const isPast = isPastPeriod(year, month)
+                            const key = cellKey(account.id, year, month)
+                            const value = getValue(account.id, year, month)
+                            const isSaving = saving.has(key)
+                            const devClass = !isPast ? deviationClass(account.id, year, month) : ''
+                            return (
+                              <td key={`${year}-${month}`} className="px-1 py-0.5">
+                                {isPast || isLocked ? (
+                                  <div className={cn(
+                                    'px-2 py-1.5 text-right rounded',
+                                    isPast ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
+                                  )}>
+                                    {fmt(value)}
+                                  </div>
+                                ) : (
+                                  <div className="relative">
+                                    <input
+                                      key={`${key}-${value}`}
+                                      ref={(el) => {
+                                        if (el) inputRefs.current.set(key, el)
+                                        else inputRefs.current.delete(key)
+                                      }}
+                                      type="text"
+                                      defaultValue={value !== 0 ? fmt(value) : ''}
+                                      onBlur={(e) => {
+                                        const parsed = parseSEK(e.target.value)
+                                        onCellChange(account.id, year, month, parsed)
+                                        e.target.value = parsed !== 0 ? fmt(parsed) : ''
+                                      }}
+                                      onFocus={(e) => {
+                                        const raw = entries.get(key) ?? 0
+                                        e.target.value = raw !== 0 ? String(raw) : ''
+                                        e.target.select()
+                                      }}
+                                      onKeyDown={(e) => handleKeyDown(e, globalRowIdx, periodIdx)}
+                                      className={cn(
+                                        'w-full px-2 py-1.5 text-right rounded border focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white text-gray-900',
+                                        devClass || 'border-transparent hover:border-gray-200',
+                                      )}
+                                    />
+                                    {isSaving && (
+                                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                                        <Loader2 size={10} className="animate-spin text-gray-300" />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            )
+                          })}
+
+                          <td className={cn(
+                            'px-3 py-1 text-right font-medium border-l border-gray-200',
+                            isIC ? 'text-blue-600 bg-blue-50/20' : 'text-gray-700 bg-gray-50'
+                          )}>
+                            {fmt(rowTotal)}
+                          </td>
                         </tr>
-                      )}
+
+                        {/* IC sub-rows */}
+                        {isIC && isICExpanded && (
+                          <>
+                            {counterparts.map((counterpartId) => {
+                              const cpCompany = companies.find((c) => c.id === counterpartId)
+                              const subTotal = getICSubRowTotal(account.id, counterpartId)
+                              return (
+                                <tr key={counterpartId} className="border-t border-blue-100 bg-blue-50/20">
+                                  <td className="sticky left-0 bg-blue-50/20 px-3 py-1 pl-9 z-10">
+                                    <span className="text-blue-600 font-medium">
+                                      → {cpCompany?.name ?? `Bolag ${counterpartId}`}
+                                    </span>
+                                  </td>
+                                  {periods.map(({ year, month }) => {
+                                    const isPast = isPastPeriod(year, month)
+                                    const icKey = periodKey(year, month) + ':' + account.id + ':' + counterpartId
+                                    const value = icEntries.get(icKey) ?? 0
+                                    const isSaving = icSaving.has(icKey)
+                                    return (
+                                      <td key={`${year}-${month}`} className="px-1 py-0.5">
+                                        {isPast || isLocked ? (
+                                          <div className="px-2 py-1.5 text-right text-gray-400 bg-blue-50/30 rounded tabular-nums">
+                                            {fmt(value)}
+                                          </div>
+                                        ) : (
+                                          <div className="relative">
+                                            <input
+                                              key={`${icKey}-${value}`}
+                                              type="text"
+                                              defaultValue={value !== 0 ? fmt(value) : ''}
+                                              onBlur={(e) => {
+                                                const parsed = parseSEK(e.target.value)
+                                                onICCellChange(account.id, counterpartId, year, month, parsed)
+                                                e.target.value = parsed !== 0 ? fmt(parsed) : ''
+                                              }}
+                                              onFocus={(e) => {
+                                                e.target.value = value !== 0 ? String(value) : ''
+                                                e.target.select()
+                                              }}
+                                              className="w-full px-2 py-1.5 text-right rounded border border-blue-100 hover:border-blue-300 focus:border-blue-400 focus:ring-1 focus:ring-blue-300 focus:outline-none bg-white text-gray-900"
+                                            />
+                                            {isSaving && (
+                                              <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                                                <Loader2 size={10} className="animate-spin text-blue-300" />
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </td>
+                                    )
+                                  })}
+                                  <td className="px-3 py-1 text-right text-blue-600 tabular-nums bg-blue-50/30 border-l border-blue-100">
+                                    {fmt(subTotal)}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+
+                            {/* Add counterpart row */}
+                            {!isLocked && availableCounterparts.length > 0 && (
+                              <tr className="border-t border-blue-50 bg-blue-50/10">
+                                <td className="sticky left-0 bg-blue-50/10 px-3 py-1.5 pl-9 z-10" colSpan={periods.length + 2}>
+                                  <div className="flex items-center gap-2">
+                                    <Plus size={12} className="text-blue-400 shrink-0" />
+                                    <select
+                                      defaultValue=""
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          addCounterpart(account.id, parseInt(e.target.value))
+                                          e.target.value = ''
+                                        }
+                                      }}
+                                      className="text-xs text-blue-600 bg-transparent border-none focus:outline-none cursor-pointer hover:text-blue-800"
+                                    >
+                                      <option value="" disabled>Lägg till motpart…</option>
+                                      {availableCounterparts.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </>
+                        )}
+
+                        {/* Inline comment row (non-IC only) */}
+                        {!isIC && isCommentOpen && (
+                          <tr className="border-t border-brand-100 bg-brand-50/30">
+                            <td className="sticky left-0 bg-brand-50/30 px-3 py-2 z-10" colSpan={periods.length + 2}>
+                              <div className="flex items-start gap-2">
+                                <MessageSquare size={12} className="text-brand-400 mt-2 shrink-0" />
+                                <textarea
+                                  autoFocus
+                                  value={commentDraft}
+                                  onChange={(e) => setCommentDraft(e.target.value)}
+                                  onBlur={() => saveComment(account.id, commentDraft)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape') setOpenCommentId(null)
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault()
+                                      saveComment(account.id, commentDraft)
+                                    }
+                                  }}
+                                  placeholder="Skriv en kommentar… (Enter för att spara, Esc för att avbryta)"
+                                  rows={2}
+                                  className="flex-1 text-xs px-2 py-1.5 border border-brand-200 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-brand-400 bg-white text-gray-700 placeholder-gray-400"
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                       </Fragment>
                     )
                   })}
 
-                  {/* Section subtotal — only shown when expanded */}
                   {!isCollapsed && (
                     <tr className="border-t border-gray-200 bg-gray-50/80">
                       <td className="sticky left-0 bg-gray-50/80 px-3 py-1.5 font-medium text-gray-600">
@@ -527,7 +712,6 @@ export default function BudgetMatrix({
               )
             })}
 
-            {/* Grand total */}
             <tr className="border-t-2 border-gray-300 bg-gray-100">
               <td className="sticky left-0 bg-gray-100 px-3 py-2 font-semibold text-gray-800">Totalt</td>
               {periods.map(({ year, month }) => (
