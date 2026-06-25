@@ -93,60 +93,85 @@ export default function IntercompanyPage() {
       const matchingIds = scenarios.filter((s) => s.name === name).map((s) => s.id)
       if (matchingIds.length === 0) { setLines([]); setPeriods([]); setLoading(false); return }
 
-      // Fetch IC account IDs separately to avoid nested account_configs array ambiguity
-      const { data: icAccountData } = await supabase
+      // Fetch ALL IC accounts (account_number + name, unique per account_number)
+      const { data: icConfigData } = await supabase
         .from('account_configs')
-        .select('account_id')
+        .select('account_id, accounts(id, account_number, name, company_id)')
         .eq('is_intercompany', true)
-      const icAccountIds = new Set((icAccountData ?? []).map((r: any) => r.account_id as number))
 
+      // Deduplicate by account_number — keep first occurrence per number
+      const icAccountByNumber = new Map<string, { name: string; id: number; company_id: number }>()
+      const icAccountIds = new Set<number>()
+      for (const cfg of (icConfigData ?? []) as any[]) {
+        const acct = cfg.accounts
+        if (!acct) continue
+        icAccountIds.add(cfg.account_id)
+        if (!icAccountByNumber.has(acct.account_number)) {
+          icAccountByNumber.set(acct.account_number, {
+            name: acct.name,
+            id: cfg.account_id,
+            company_id: acct.company_id,
+          })
+        }
+      }
+
+      // Fetch budget entries for matching scenarios, restricted to IC accounts
       const { data, error } = await supabase
         .from('budget_entries')
         .select('amount, account_id, scenario_id, year, month, counterpart_company_id, accounts(account_number, name, company_id)')
         .in('scenario_id', matchingIds)
+        .in('account_id', [...icAccountIds])
 
       if (error) throw error
 
       const entries = (data ?? []) as unknown as EntryRow[]
-      const icEntries = entries.filter((e) => icAccountIds.has(e.account_id))
 
-      // Collect all periods present in the data
+      // Collect periods from entries
       const periodSet = new Map<string, Period>()
-      for (const e of icEntries) {
+      for (const e of entries) {
         const k = pKey(e.year, e.month)
         if (!periodSet.has(k)) periodSet.set(k, { year: e.year, month: e.month })
       }
+
+      // If no entries at all, derive periods from matching scenarios
+      if (periodSet.size === 0) {
+        const matchingScenarios = scenarios.filter((s) => matchingIds.includes(s.id))
+        for (const s of matchingScenarios) {
+          let y = s.start_year; let m = s.start_month
+          while (y < s.end_year || (y === s.end_year && m <= s.end_month)) {
+            periodSet.set(pKey(y, m), { year: y, month: m })
+            m++; if (m > 12) { m = 1; y++ }
+          }
+        }
+      }
+
       const sortedPeriods = [...periodSet.values()].sort(
         (a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month
       )
       setPeriods(sortedPeriods)
 
-      // Build account lines with pair breakdown
+      // Build account lines — start with all IC accounts (empty pairs)
       const accountMap = new Map<string, AccountLine>()
+      for (const [account_number, info] of icAccountByNumber) {
+        accountMap.set(account_number, { account_number, name: info.name, pairs: [] })
+      }
 
-      for (const e of icEntries) {
+      // Fill in pairs from entries
+      for (const e of entries) {
         if (!e.accounts) continue
         const acctKey = e.accounts.account_number
         if (!accountMap.has(acctKey)) {
-          accountMap.set(acctKey, {
-            account_number: acctKey,
-            name: e.accounts.name,
-            pairs: [],
-          })
+          accountMap.set(acctKey, { account_number: acctKey, name: e.accounts.name, pairs: [] })
         }
         const line = accountMap.get(acctKey)!
         const fromId = e.accounts.company_id
         const toId = e.counterpart_company_id
 
-        // Find or create the pair
-        let pair = line.pairs.find(
-          (p) => p.from_company_id === fromId && p.to_company_id === toId
-        )
+        let pair = line.pairs.find((p) => p.from_company_id === fromId && p.to_company_id === toId)
         if (!pair) {
           pair = { from_company_id: fromId, to_company_id: toId, amounts: new Map() }
           line.pairs.push(pair)
         }
-
         const k = pKey(e.year, e.month)
         pair.amounts.set(k, (pair.amounts.get(k) ?? 0) + e.amount)
       }
@@ -156,10 +181,11 @@ export default function IntercompanyPage() {
       )
       setLines(result)
 
-      // Expand all unbalanced accounts by default
+      // Auto-expand unbalanced accounts
       const toExpand = new Set<string>()
       for (const line of result) {
-        if (!isBalanced(line, sortedPeriods)) toExpand.add(line.account_number)
+        if (line.pairs.length > 0 && !isBalanced(line, sortedPeriods))
+          toExpand.add(line.account_number)
       }
       setExpandedAccounts(toExpand)
 
