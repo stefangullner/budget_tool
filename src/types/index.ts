@@ -58,6 +58,7 @@ export interface BudgetEntry {
   year: number
   month: number
   amount: number
+  counterpart_company_id: number | null
   updated_by: string
   updated_at: string
 }
