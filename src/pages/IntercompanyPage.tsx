@@ -20,7 +20,6 @@ type EntryRow = {
     account_number: string
     name: string
     company_id: number
-    account_configs: { is_intercompany: boolean } | null
   } | null
 }
 
@@ -92,17 +91,24 @@ export default function IntercompanyPage() {
     setLoading(true)
     try {
       const matchingIds = scenarios.filter((s) => s.name === name).map((s) => s.id)
-      if (matchingIds.length === 0) { setLines([]); setPeriods([]); return }
+      if (matchingIds.length === 0) { setLines([]); setPeriods([]); setLoading(false); return }
+
+      // Fetch IC account IDs separately to avoid nested account_configs array ambiguity
+      const { data: icAccountData } = await supabase
+        .from('account_configs')
+        .select('account_id')
+        .eq('is_intercompany', true)
+      const icAccountIds = new Set((icAccountData ?? []).map((r: any) => r.account_id as number))
 
       const { data, error } = await supabase
         .from('budget_entries')
-        .select('amount, account_id, scenario_id, year, month, counterpart_company_id, accounts(account_number, name, company_id, account_configs(is_intercompany))')
+        .select('amount, account_id, scenario_id, year, month, counterpart_company_id, accounts(account_number, name, company_id)')
         .in('scenario_id', matchingIds)
 
       if (error) throw error
 
       const entries = (data ?? []) as unknown as EntryRow[]
-      const icEntries = entries.filter((e) => e.accounts?.account_configs?.is_intercompany)
+      const icEntries = entries.filter((e) => icAccountIds.has(e.account_id))
 
       // Collect all periods present in the data
       const periodSet = new Map<string, Period>()
