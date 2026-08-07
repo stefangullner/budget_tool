@@ -4,8 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { AccountRow } from '@/hooks/useBudget'
 import type { CostCenter, Scenario, ScenarioLock } from '@/types'
-
-const SECTIONS = ['Intäkter', 'Personal', 'Lokaler', 'Marknadsföring', 'Administration', 'Övrigt']
+import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
 
 interface Props {
   scenario: Scenario
@@ -27,6 +26,7 @@ function entryKey(costCenterId: number, accountId: number) {
 }
 
 export default function BudgetOverview({ scenario, accounts, costCenters, locks, onSelectKS }: Props) {
+  const sectionOrderMap = useSectionOrder()
   const [allEntries, setAllEntries] = useState<AllEntries>(new Map())
   const [loading, setLoading] = useState(false)
 
@@ -50,18 +50,21 @@ export default function BudgetOverview({ scenario, accounts, costCenters, locks,
   }, [scenario.id])
 
   // Build section → account list lookup
+  const uniqueSections = sortSections(
+    [...new Set(accounts.map((a) => a.config?.section ?? '— Ingen sektion'))],
+    sectionOrderMap,
+  )
   const accountsBySection = new Map<string, AccountRow[]>()
-  for (const section of SECTIONS) {
+  for (const section of uniqueSections) {
     accountsBySection.set(
       section,
-      accounts.filter((a) => (a.config?.section ?? 'Övrigt') === section),
+      accounts.filter((a) => (a.config?.section ?? '— Ingen sektion') === section),
     )
   }
-  const visibleSections = SECTIONS.filter((s) => (accountsBySection.get(s)?.length ?? 0) > 0)
+  const visibleSections = uniqueSections.filter((s) => (accountsBySection.get(s)?.length ?? 0) > 0)
 
   function sectionTotal(costCenterId: number, section: string): number {
-    const sectionAccounts = accountsBySection.get(section) ?? []
-    return sectionAccounts.reduce(
+    return (accountsBySection.get(section) ?? []).reduce(
       (sum, a) => sum + (allEntries.get(entryKey(costCenterId, a.id)) ?? 0),
       0,
     )

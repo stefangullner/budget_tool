@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
+import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
 import type { Scenario, ScenarioLock, Company } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
 import CopyRowDialog from '@/components/CopyRowDialog'
@@ -59,6 +60,7 @@ export default function BudgetMatrix({
   onICCellChange,
   onToggleLock,
 }: Props) {
+  const sectionOrderMap = useSectionOrder()
   const periods = scenarioPeriods(scenario)
   const isLocked = locks.some((l) => l.cost_center_id === costCenterId)
 
@@ -145,13 +147,10 @@ export default function BudgetMatrix({
     return accounts.reduce((sum, a) => sum + getRowTotal(a.id), 0)
   }
 
-  const sectionOrder: (string | null)[] = [
-    ...new Set(
-      accounts
-        .map((a) => a.config?.section ?? null)
-        .filter((s): s is string => s !== null)
-    ),
-  ].sort()
+  const sectionOrder: (string | null)[] = sortSections(
+    [...new Set(accounts.map((a) => a.config?.section ?? null).filter((s): s is string => s !== null))],
+    sectionOrderMap,
+  )
   sectionOrder.push(null)
 
   const grouped = sectionOrder.map((section) => ({
