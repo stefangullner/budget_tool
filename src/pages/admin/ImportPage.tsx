@@ -64,8 +64,8 @@ export default function ImportPage() {
         const wb = XLSX.read(e.target?.result, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
         const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' })
-        const dataRows = raw.slice(1).filter((r) => r.some((c) => String(c).trim() !== ''))
-        const parsed = dataRows.map((r, i) => parseRow(r, i + 2))
+        const dataRows = raw.slice(1).filter((r: string[]) => r.some((c: string) => String(c).trim() !== ''))
+        const parsed = dataRows.map((r: string[], i: number) => parseRow(r, i + 2))
         setRows(parsed)
       } catch {
         setResult({ ok: false, message: 'Kunde inte läsa filen. Kontrollera att det är en giltig .xlsx.' })

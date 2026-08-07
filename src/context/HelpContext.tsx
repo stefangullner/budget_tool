@@ -12,6 +12,7 @@ export type HelpSection =
   | 'admin-cost-centers'
   | 'admin-deadlines'
   | 'admin-sync'
+  | 'admin-import'
   | 'admin-export'
 
 interface HelpContextValue {
