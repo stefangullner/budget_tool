@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Trash2, Plus, X, UserPlus, Shield, Building2, MapPin } from 'lucide-react'
+import { Trash2, Plus, X, UserPlus, Shield, Building2, MapPin, Users } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
+import { useRoles } from '@/hooks/useRoles'
 import RoleSectionPermissions from './RoleSectionPermissions'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
@@ -25,29 +26,26 @@ type UserData = {
   roles: UserRole[]
 }
 
-const ROLE_LABELS = {
-  admin: 'Admin',
-  company_manager: 'Bolagsansvarig',
-  cost_center_manager: 'KS-ansvarig',
-}
-
-function RoleBadge({ role, label }: { role: UserRole['role']; label: string }) {
+function RoleBadge({ role, label }: { role: string; label: string }) {
   return (
     <span className={cn(
       'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
-      role === 'admin' && 'bg-purple-50 text-purple-700',
-      role === 'company_manager' && 'bg-blue-50 text-blue-700',
-      role === 'cost_center_manager' && 'bg-green-50 text-green-700',
+      role === 'admin' ? 'bg-purple-50 text-purple-700'
+        : role === 'company_manager' ? 'bg-blue-50 text-blue-700'
+        : role === 'cost_center_manager' ? 'bg-green-50 text-green-700'
+        : 'bg-amber-50 text-amber-700',
     )}>
-      {role === 'admin' && <Shield size={10} />}
-      {role === 'company_manager' && <Building2 size={10} />}
-      {role === 'cost_center_manager' && <MapPin size={10} />}
+      {role === 'admin' ? <Shield size={10} />
+        : role === 'company_manager' ? <Building2 size={10} />
+        : role === 'cost_center_manager' ? <MapPin size={10} />
+        : <Users size={10} />}
       {label}
     </span>
   )
 }
 
 export default function UsersPage() {
+  const { roles: roleDefinitions } = useRoles()
   const [users, setUsers] = useState<UserData[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
@@ -55,7 +53,7 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [editingUser, setEditingUser] = useState<UserData | null>(null)
-  const [newRole, setNewRole] = useState<UserRole['role']>('company_manager')
+  const [newRole, setNewRole] = useState<string>('company_manager')
   const [newCompanyId, setNewCompanyId] = useState<number | ''>('')
   const [newCostCenterId, setNewCostCenterId] = useState<number | ''>('')
   const [addingRole, setAddingRole] = useState(false)
@@ -99,25 +97,32 @@ export default function UsersPage() {
   }, [fetchUsers])
 
   function roleScopeLabel(r: UserRole): string {
-    if (r.role === 'admin') return 'Admin'
-    if (r.role === 'company_manager') {
-      const c = companies.find(c => c.id === r.company_id)
-      return c ? `${ROLE_LABELS.company_manager} — ${c.name}` : ROLE_LABELS.company_manager
+    const def = roleDefinitions.find((d) => d.name === r.role)
+    const label = def?.label ?? r.role
+    if (def?.scope_type === 'company' || r.company_id) {
+      const c = companies.find((c) => c.id === r.company_id)
+      return c ? `${label} — ${c.name}` : label
     }
-    const ks = costCenters.find(k => k.id === r.cost_center_id)
-    return ks ? `${ROLE_LABELS.cost_center_manager} — ${ks.code} ${ks.name}` : ROLE_LABELS.cost_center_manager
+    if (def?.scope_type === 'cost_center' || r.cost_center_id) {
+      const ks = costCenters.find((k) => k.id === r.cost_center_id)
+      return ks ? `${label} — ${ks.code} ${ks.name}` : label
+    }
+    return label
   }
+
+  const selectedRoleDef = roleDefinitions.find((d) => d.name === newRole)
+  const newRoleScope = selectedRoleDef?.scope_type ?? 'cost_center'
 
   async function addRole() {
     if (!editingUser) return
-    if (newRole === 'company_manager' && !newCompanyId) return
-    if (newRole === 'cost_center_manager' && !newCostCenterId) return
+    if (newRoleScope === 'company' && !newCompanyId) return
+    if (newRoleScope === 'cost_center' && !newCostCenterId) return
     setAddingRole(true)
     const { data } = await supabase.from('user_roles').insert({
       user_id: editingUser.id,
       role: newRole,
-      company_id: newRole === 'company_manager' ? newCompanyId || null : null,
-      cost_center_id: newRole === 'cost_center_manager' ? newCostCenterId || null : null,
+      company_id: newRoleScope === 'company' ? newCompanyId || null : null,
+      cost_center_id: newRoleScope === 'cost_center' ? newCostCenterId || null : null,
     }).select().single()
     if (data) {
       const updated = { ...editingUser, roles: [...editingUser.roles, data as UserRole] }
@@ -185,7 +190,7 @@ export default function UsersPage() {
     }
   }
 
-  const ksForCompany = newRole === 'cost_center_manager' && newCompanyId
+  const ksForCompany = newRoleScope === 'cost_center' && newCompanyId
     ? costCenters.filter(k => k.company_id === newCompanyId)
     : costCenters
 
@@ -313,15 +318,15 @@ export default function UsersPage() {
               <div className="flex flex-col gap-2">
                 <select
                   value={newRole}
-                  onChange={e => { setNewRole(e.target.value as UserRole['role']); setNewCompanyId(''); setNewCostCenterId('') }}
+                  onChange={e => { setNewRole(e.target.value); setNewCompanyId(''); setNewCostCenterId('') }}
                   className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
                 >
-                  <option value="admin">Admin</option>
-                  <option value="company_manager">Bolagsansvarig</option>
-                  <option value="cost_center_manager">KS-ansvarig</option>
+                  {roleDefinitions.map((r) => (
+                    <option key={r.name} value={r.name}>{r.label}</option>
+                  ))}
                 </select>
 
-                {newRole === 'company_manager' && (
+                {newRoleScope === 'company' && (
                   <select
                     value={newCompanyId}
                     onChange={e => setNewCompanyId(Number(e.target.value))}
@@ -332,7 +337,7 @@ export default function UsersPage() {
                   </select>
                 )}
 
-                {newRole === 'cost_center_manager' && (
+                {newRoleScope === 'cost_center' && (
                   <>
                     <select
                       value={newCompanyId}
@@ -357,8 +362,8 @@ export default function UsersPage() {
                   onClick={addRole}
                   disabled={
                     addingRole ||
-                    (newRole === 'company_manager' && !newCompanyId) ||
-                    (newRole === 'cost_center_manager' && !newCostCenterId)
+                    (newRoleScope === 'company' && !newCompanyId) ||
+                    (newRoleScope === 'cost_center' && !newCostCenterId)
                   }
                   className="flex items-center justify-center gap-1.5 px-3 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-40"
                 >

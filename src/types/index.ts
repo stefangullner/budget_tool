@@ -1,4 +1,11 @@
-export type Role = 'admin' | 'company_manager' | 'cost_center_manager'
+export type Role = string
+
+export interface RoleDefinition {
+  name: string
+  label: string
+  scope_type: 'global' | 'company' | 'cost_center'
+  is_system: boolean
+}
 
 export interface Company {
   id: number
