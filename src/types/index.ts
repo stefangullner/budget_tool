@@ -3,7 +3,7 @@ export type Role = string
 export interface RoleDefinition {
   name: string
   label: string
-  scope_type: 'global' | 'company' | 'cost_center'
+  scope_type: 'global' | 'company' | 'cost_center' | 'region'
   is_system: boolean
 }
 
@@ -21,6 +21,7 @@ export interface CostCenter {
   code: string
   name: string
   is_active: boolean
+  region: string | null
 }
 
 export interface Account {
@@ -100,4 +101,5 @@ export interface UserRole {
   role: Role
   company_id: number | null
   cost_center_id: number | null
+  region: string | null
 }

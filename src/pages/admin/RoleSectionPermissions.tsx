@@ -19,6 +19,7 @@ const SCOPE_LABELS: Record<RoleDefinition['scope_type'], string> = {
   global: 'Global',
   company: 'Per bolag',
   cost_center: 'Per KS',
+  region: 'Per region',
 }
 
 export default function RoleSectionPermissions() {
@@ -172,6 +173,7 @@ export default function RoleSectionPermissions() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                 >
                   <option value="cost_center">Per kostnadsställe</option>
+                  <option value="region">Per region</option>
                   <option value="company">Per bolag</option>
                   <option value="global">Global (inget scope)</option>
                 </select>

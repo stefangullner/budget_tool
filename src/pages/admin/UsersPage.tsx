@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Trash2, Plus, X, UserPlus, Shield, Building2, MapPin, Users } from 'lucide-react'
+import { Trash2, Plus, X, UserPlus, Shield, Building2, MapPin, Users, Globe } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -12,9 +12,10 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 type UserRole = {
   id: number
   user_id: string
-  role: 'admin' | 'company_manager' | 'cost_center_manager'
+  role: string
   company_id: number | null
   cost_center_id: number | null
+  region: string | null
 }
 
 type UserData = {
@@ -33,11 +34,13 @@ function RoleBadge({ role, label }: { role: string; label: string }) {
       role === 'admin' ? 'bg-purple-50 text-purple-700'
         : role === 'company_manager' ? 'bg-blue-50 text-blue-700'
         : role === 'cost_center_manager' ? 'bg-green-50 text-green-700'
+        : role === 'region_manager' ? 'bg-teal-50 text-teal-700'
         : 'bg-amber-50 text-amber-700',
     )}>
       {role === 'admin' ? <Shield size={10} />
         : role === 'company_manager' ? <Building2 size={10} />
         : role === 'cost_center_manager' ? <MapPin size={10} />
+        : role === 'region_manager' ? <Globe size={10} />
         : <Users size={10} />}
       {label}
     </span>
@@ -56,7 +59,9 @@ export default function UsersPage() {
   const [newRole, setNewRole] = useState<string>('company_manager')
   const [newCompanyId, setNewCompanyId] = useState<number | ''>('')
   const [newCostCenterId, setNewCostCenterId] = useState<number | ''>('')
+  const [newRegion, setNewRegion] = useState<string>('')
   const [addingRole, setAddingRole] = useState(false)
+  const [regions, setRegions] = useState<string[]>([])
 
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -93,7 +98,12 @@ export default function UsersPage() {
   useEffect(() => {
     fetchUsers()
     supabase.from('companies').select('*').order('id').then(({ data }) => setCompanies(data ?? []))
-    supabase.from('cost_centers').select('*').order('code').then(({ data }) => setCostCenters((data ?? []) as CostCenter[]))
+    supabase.from('cost_centers').select('*').order('code').then(({ data }) => {
+      const all = (data ?? []) as CostCenter[]
+      setCostCenters(all)
+      const distinct = [...new Set(all.map((k) => k.region).filter((r): r is string => !!r))].sort()
+      setRegions(distinct)
+    })
   }, [fetchUsers])
 
   function roleScopeLabel(r: UserRole): string {
@@ -107,6 +117,9 @@ export default function UsersPage() {
       const ks = costCenters.find((k) => k.id === r.cost_center_id)
       return ks ? `${label} — ${ks.code} ${ks.name}` : label
     }
+    if (def?.scope_type === 'region' || r.region) {
+      return r.region ? `${label} — ${r.region}` : label
+    }
     return label
   }
 
@@ -117,12 +130,14 @@ export default function UsersPage() {
     if (!editingUser) return
     if (newRoleScope === 'company' && !newCompanyId) return
     if (newRoleScope === 'cost_center' && !newCostCenterId) return
+    if (newRoleScope === 'region' && !newRegion) return
     setAddingRole(true)
     const { data } = await supabase.from('user_roles').insert({
       user_id: editingUser.id,
       role: newRole,
       company_id: newRoleScope === 'company' ? newCompanyId || null : null,
       cost_center_id: newRoleScope === 'cost_center' ? newCostCenterId || null : null,
+      region: newRoleScope === 'region' ? newRegion || null : null,
     }).select().single()
     if (data) {
       const updated = { ...editingUser, roles: [...editingUser.roles, data as UserRole] }
@@ -130,6 +145,7 @@ export default function UsersPage() {
       setUsers(prev => prev.map(u => u.id === editingUser.id ? updated : u))
       setNewCompanyId('')
       setNewCostCenterId('')
+      setNewRegion('')
     }
     setAddingRole(false)
   }
@@ -318,7 +334,7 @@ export default function UsersPage() {
               <div className="flex flex-col gap-2">
                 <select
                   value={newRole}
-                  onChange={e => { setNewRole(e.target.value); setNewCompanyId(''); setNewCostCenterId('') }}
+                  onChange={e => { setNewRole(e.target.value); setNewCompanyId(''); setNewCostCenterId(''); setNewRegion('') }}
                   className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
                 >
                   {roleDefinitions.map((r) => (
@@ -358,12 +374,24 @@ export default function UsersPage() {
                   </>
                 )}
 
+                {newRoleScope === 'region' && (
+                  <select
+                    value={newRegion}
+                    onChange={e => setNewRegion(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  >
+                    <option value="">Välj region...</option>
+                    {regions.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                )}
+
                 <button
                   onClick={addRole}
                   disabled={
                     addingRole ||
                     (newRoleScope === 'company' && !newCompanyId) ||
-                    (newRoleScope === 'cost_center' && !newCostCenterId)
+                    (newRoleScope === 'cost_center' && !newCostCenterId) ||
+                    (newRoleScope === 'region' && !newRegion)
                   }
                   className="flex items-center justify-center gap-1.5 px-3 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-40"
                 >
@@ -421,7 +449,7 @@ export default function UsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
                       <button
-                        onClick={() => { setEditingUser(u); setNewRole('company_manager'); setNewCompanyId(''); setNewCostCenterId('') }}
+                        onClick={() => { setEditingUser(u); setNewRole('company_manager'); setNewCompanyId(''); setNewCostCenterId(''); setNewRegion('') }}
                         className="px-2 py-1 text-xs text-brand-600 border border-brand-200 rounded hover:bg-brand-50 transition-colors"
                       >
                         Roller
