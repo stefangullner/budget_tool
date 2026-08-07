@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Download, CheckCircle2, XCircle } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { Download, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
+import { sortSections } from '@/hooks/useSectionOrder'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
@@ -104,6 +106,140 @@ export default function ExportPage() {
 
   const selectedScenario = scenarios.find(s => s.id === selectedScenarioId)
 
+  async function exportExcel() {
+    if (!selectedScenarioId || !selectedScenario) return
+    setExporting(true)
+    try {
+      const [{ data: entries }, { data: accountRows }, { data: costCenterRows }, { data: sectionData }] = await Promise.all([
+        supabase
+          .from('budget_entries')
+          .select('account_id, cost_center_id, year, month, amount')
+          .eq('scenario_id', selectedScenarioId),
+        supabase
+          .from('accounts')
+          .select('id, account_number, name, account_configs!inner(section, display_order, is_budgetable)')
+          .eq('company_id', selectedScenario.company_id)
+          .eq('account_configs.is_budgetable', true)
+          .order('account_number'),
+        supabase
+          .from('cost_centers')
+          .select('id, code, name')
+          .eq('company_id', selectedScenario.company_id)
+          .eq('is_active', true)
+          .order('code'),
+        supabase.from('section_configs').select('name, display_order'),
+      ])
+
+      // Build period list
+      const periods: { year: number; month: number }[] = []
+      let y = selectedScenario.start_year, m = selectedScenario.start_month
+      while (y < selectedScenario.end_year || (y === selectedScenario.end_year && m <= selectedScenario.end_month)) {
+        periods.push({ year: y, month: m })
+        m++; if (m > 12) { m = 1; y++ }
+      }
+
+      const MON = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+
+      const sectionOrderMap = new Map<string, number>()
+      for (const s of sectionData ?? []) sectionOrderMap.set(s.name, s.display_order)
+
+      // Sum entries by (account, cost_center, year, month)
+      const entryMap = new Map<string, number>()
+      for (const e of entries ?? []) {
+        const k = `${e.account_id}:${e.cost_center_id}:${e.year}:${e.month}`
+        entryMap.set(k, (entryMap.get(k) ?? 0) + (e.amount as number))
+      }
+
+      const ksList = costCenterRows ?? []
+
+      // Per-KS sheet
+      const wb = XLSX.utils.book_new()
+
+      for (const ks of ksList) {
+        const aoa: (string | number)[][] = []
+
+        // Header row
+        const header: (string | number)[] = ['Konto', 'Namn', 'Sektion']
+        for (const p of periods) header.push(`${MON[p.month - 1]} ${p.year}`)
+        header.push('Helår')
+        aoa.push(header)
+
+        // Group accounts by section
+        const sections: string[] = []
+        const bySection = new Map<string, typeof accountRows>()
+        for (const a of accountRows ?? []) {
+          const sec = (a.account_configs as { section: string | null }[])[0]?.section ?? '— Ingen sektion'
+          if (!bySection.has(sec)) { sections.push(sec); bySection.set(sec, []) }
+          bySection.get(sec)!.push(a)
+        }
+        const orderedSections = sortSections(
+          sections.filter((s) => s !== '— Ingen sektion'),
+          sectionOrderMap,
+        )
+        if (sections.includes('— Ingen sektion')) orderedSections.push('— Ingen sektion')
+
+        let grandTotal = 0
+
+        for (const sec of orderedSections) {
+          const secAccounts = bySection.get(sec) ?? []
+          // Section header row
+          aoa.push([sec.toUpperCase()])
+
+          let sectionTotal = 0
+          for (const a of secAccounts) {
+            const row: (string | number)[] = [
+              a.account_number,
+              a.name,
+              (a.account_configs as { section: string | null }[])[0]?.section ?? '',
+            ]
+            let rowTotal = 0
+            for (const p of periods) {
+              const val = entryMap.get(`${a.id}:${ks.id}:${p.year}:${p.month}`) ?? 0
+              row.push(val)
+              rowTotal += val
+            }
+            row.push(rowTotal)
+            sectionTotal += rowTotal
+            aoa.push(row)
+          }
+
+          // Section total
+          const secTotalRow: (string | number)[] = [`Σ ${sec}`, '', '']
+          const colTotals: number[] = periods.map((p) =>
+            (secAccounts ?? []).reduce(
+              (s, a) => s + (entryMap.get(`${a.id}:${ks.id}:${p.year}:${p.month}`) ?? 0), 0
+            )
+          )
+          secTotalRow.push(...colTotals, sectionTotal)
+          grandTotal += sectionTotal
+          aoa.push(secTotalRow)
+          aoa.push([])
+        }
+
+        // Grand total
+        const grandRow: (string | number)[] = ['TOTALT', '', '']
+        for (const p of periods) {
+          grandRow.push((accountRows ?? []).reduce(
+            (s, a) => s + (entryMap.get(`${a.id}:${ks.id}:${p.year}:${p.month}`) ?? 0), 0
+          ))
+        }
+        grandRow.push(grandTotal)
+        aoa.push(grandRow)
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa)
+        ws['!cols'] = [{ wch: 12 }, { wch: 28 }, { wch: 22 }, ...periods.map(() => ({ wch: 11 })), { wch: 12 }]
+        const sheetName = `${ks.code} ${ks.name}`.slice(0, 31)
+        XLSX.utils.book_append_sheet(wb, ws, sheetName)
+      }
+
+      const scenName = selectedScenario.name.replace(/[^a-zA-Z0-9_\-åäöÅÄÖ ]/g, '_')
+      const company = companies.find(c => c.id === selectedScenario.company_id)
+      XLSX.writeFile(wb, `Budget_${company?.name ?? ''}_${scenName}.xlsx`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-6 flex items-start justify-between">
@@ -161,6 +297,31 @@ export default function ExportPage() {
           <Download size={14} className={cn(exporting && 'animate-bounce')} />
           {exporting ? 'Exporterar...' : 'Exportera till Fabric'}
         </button>
+      </div>
+
+      {/* Excel export */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+              <FileSpreadsheet size={15} className="text-green-600" /> Exportera som Excel
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Skapar en .xlsx med ett flik per kostnadsställe — konton som rader, månader som kolumner.
+            </p>
+          </div>
+          <button
+            onClick={exportExcel}
+            disabled={exporting || !selectedScenarioId}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-green-600 text-green-700 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-40 shrink-0"
+          >
+            <Download size={13} className={cn(exporting && 'animate-bounce')} />
+            {exporting ? 'Genererar...' : 'Ladda ner Excel'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400">
+          Använder valt scenario ovan. Konton grupperas per sektion, sorterade i konfigurerad ordning.
+        </p>
       </div>
 
       {/* Exporthistorik */}

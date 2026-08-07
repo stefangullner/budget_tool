@@ -17,6 +17,7 @@ import CostCentersPage from '@/pages/admin/CostCentersPage'
 import DeadlinesPage from '@/pages/admin/DeadlinesPage'
 import SyncPage from '@/pages/admin/SyncPage'
 import ExportPage from '@/pages/admin/ExportPage'
+import ImportPage from '@/pages/admin/ImportPage'
 import CompaniesPage from '@/pages/admin/CompaniesPage'
 
 export default function App() {
@@ -59,6 +60,7 @@ export default function App() {
                 <Route path="companies"    element={<CompaniesPage />} />
                 <Route path="deadlines"    element={<DeadlinesPage />} />
                 <Route path="sync"         element={<SyncPage />} />
+                <Route path="import"       element={<ImportPage />} />
                 <Route path="export"       element={<ExportPage />} />
               </Routes>
             </AdminLayout>
