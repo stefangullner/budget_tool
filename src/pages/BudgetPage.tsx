@@ -3,6 +3,7 @@ import { LayoutList, Table2, Clock, AlertTriangle } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
+import { useRoleSectionPermissions } from '@/hooks/useRoleSectionPermissions'
 
 import BudgetMatrix from '@/components/BudgetMatrix'
 import BudgetOverview from '@/components/BudgetOverview'
@@ -17,8 +18,9 @@ export default function BudgetPage() {
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null)
 
   const [view, setView] = useState<'matrix' | 'overview'>('matrix')
-
   const [userId, setUserId] = useState<string>('')
+
+  const sectionPerms = useRoleSectionPermissions()
 
   useEffect(() => {
     supabase.from('companies').select('*').order('id').then(({ data }) => {
@@ -241,6 +243,7 @@ export default function BudgetPage() {
         <BudgetMatrix
           scenario={selectedScenario}
           accounts={accounts}
+          sectionPerms={sectionPerms}
           entries={entries}
           icEntries={icEntries}
           actuals={actuals}

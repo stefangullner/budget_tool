@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
 import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
+import type { SectionPerms } from '@/hooks/useRoleSectionPermissions'
 import type { Scenario, ScenarioLock, Company } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
 import CopyRowDialog from '@/components/CopyRowDialog'
@@ -26,6 +27,7 @@ interface Props {
   companyId: number
   companies: Company[]
   userId: string
+  sectionPerms?: SectionPerms
   onCellChange: (accountId: number, year: number, month: number, amount: number) => void
   onICCellChange: (accountId: number, counterpartId: number, year: number, month: number, amount: number) => void
   onToggleLock: () => void
@@ -56,6 +58,7 @@ export default function BudgetMatrix({
   companyId,
   companies,
   userId,
+  sectionPerms,
   onCellChange,
   onICCellChange,
   onToggleLock,
@@ -153,10 +156,17 @@ export default function BudgetMatrix({
   )
   sectionOrder.push(null)
 
-  const grouped = sectionOrder.map((section) => ({
-    section: section ?? '— Ingen sektion',
-    rows: accounts.filter((a) => (a.config?.section ?? null) === section),
-  })).filter((g) => g.rows.length > 0)
+  const grouped = sectionOrder
+    .map((section) => {
+      const label = section ?? '— Ingen sektion'
+      return {
+        section: label,
+        rows: accounts.filter((a) => (a.config?.section ?? null) === section),
+        canView: sectionPerms ? sectionPerms.canView(label) : true,
+        canEdit: sectionPerms ? sectionPerms.canEdit(label) : true,
+      }
+    })
+    .filter((g) => g.rows.length > 0 && g.canView)
 
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [distributeTarget, setDistributeTarget] = useState<AccountRow | null>(null)
@@ -362,9 +372,10 @@ export default function BudgetMatrix({
           </thead>
 
           <tbody>
-            {grouped.map(({ section, rows }) => {
+            {grouped.map(({ section, rows, canEdit: sectionCanEdit }) => {
               const isCollapsed = collapsedSections.has(section)
               const sectionTotal = rows.reduce((sum, a) => sum + getRowTotal(a.id), 0)
+              const effectivelyLocked = isLocked || !sectionCanEdit
 
               return (
                 <Fragment key={section}>
@@ -472,7 +483,7 @@ export default function BudgetMatrix({
                                   >
                                     <MessageSquare size={12} />
                                   </button>
-                                  {!isLocked && futurePeriods.length > 0 && (
+                                  {!effectivelyLocked && futurePeriods.length > 0 && (
                                     <div className="invisible group-hover:visible flex items-center gap-0.5">
                                       <button
                                         onClick={() => setDistributeTarget(account)}
@@ -521,7 +532,7 @@ export default function BudgetMatrix({
                             const devClass = !isPast ? deviationClass(account.id, year, month) : ''
                             return (
                               <td key={`${year}-${month}`} className="px-1 py-0.5">
-                                {isPast || isLocked ? (
+                                {isPast || effectivelyLocked ? (
                                   <div className={cn(
                                     'px-2 py-1.5 text-right rounded',
                                     isPast ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
@@ -593,7 +604,7 @@ export default function BudgetMatrix({
                                     const isSaving = icSaving.has(icKey)
                                     return (
                                       <td key={`${year}-${month}`} className="px-1 py-0.5">
-                                        {isPast || isLocked ? (
+                                        {isPast || effectivelyLocked ? (
                                           <div className="px-2 py-1.5 text-right text-gray-400 bg-blue-50/30 rounded tabular-nums">
                                             {fmt(value)}
                                           </div>
@@ -632,7 +643,7 @@ export default function BudgetMatrix({
                             })}
 
                             {/* Add counterpart row */}
-                            {!isLocked && availableCounterparts.length > 0 && (
+                            {!effectivelyLocked && availableCounterparts.length > 0 && (
                               <tr className="border-t border-blue-50 bg-blue-50/10">
                                 <td className="sticky left-0 bg-blue-50/10 px-3 py-1.5 pl-9 z-10" colSpan={periods.length + 2}>
                                   <div className="flex items-center gap-2">

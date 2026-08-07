@@ -4,6 +4,7 @@ import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
+import RoleSectionPermissions from './RoleSectionPermissions'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
@@ -434,6 +435,8 @@ export default function UsersPage() {
           </table>
         </div>
       )}
+
+      <RoleSectionPermissions />
     </div>
   )
 }
