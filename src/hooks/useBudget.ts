@@ -38,6 +38,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   // Load scenarios for company
   useEffect(() => {
     if (!companyId) return
+    setScenarios([])
     supabase
       .from('scenarios')
       .select('*')
@@ -49,6 +50,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   // Load cost centers for company
   useEffect(() => {
     if (!companyId) return
+    setCostCenters([])
     supabase
       .from('cost_centers')
       .select('*')
@@ -61,6 +63,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   // Load accounts (budgetable only) for company — filter at DB level using inner join
   useEffect(() => {
     if (!companyId) return
+    setAccounts([])
     supabase
       .from('accounts')
       .select('*, config:account_configs!inner(*)')
