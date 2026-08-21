@@ -1,5 +1,5 @@
 import { useRef, useCallback, Fragment, useState, useEffect, useMemo } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
@@ -42,6 +42,20 @@ function parseSEK(s: string): number {
   const cleaned = s.replace(/\s/g, '').replace(',', '.')
   const n = parseFloat(cleaned)
   return isNaN(n) ? 0 : n
+}
+
+/** Read-only cell showing last year's actual next to the budget input. */
+function ActualCell({ value, className }: { value: number; className?: string }) {
+  return (
+    <td
+      className={cn(
+        'px-2 py-1 text-right tabular-nums text-gray-400 bg-gray-50/70 border-l border-gray-200',
+        className,
+      )}
+    >
+      {fmt(value)}
+    </td>
+  )
 }
 
 export default function BudgetMatrix({
@@ -173,11 +187,29 @@ export default function BudgetMatrix({
   const [copyTarget, setCopyTarget] = useState<AccountRow | null>(null)
   const [percentTarget, setPercentTarget] = useState<AccountRow | null>(null)
   const [deviationEnabled, setDeviationEnabled] = useState(false)
+  const [showActuals, setShowActuals] = useState(true)
   const [comments, setComments] = useState<Map<number, string>>(new Map())
   const [openCommentId, setOpenCommentId] = useState<number | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
 
   const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
+
+  // Comparison year columns (actuals for the same month one year earlier)
+  const colsPerPeriod = showActuals ? 2 : 1
+  const totalCols = 1 + periods.length * colsPerPeriod + colsPerPeriod
+  const comparisonYear = scenario.start_year - 1
+
+  function getPrev(accountId: number, year: number, month: number): number {
+    return prevActuals.get(periodKey(year, month) + ':' + accountId) ?? 0
+  }
+
+  function getPrevRowTotal(accountId: number): number {
+    return periods.reduce((sum, { year, month }) => sum + getPrev(accountId, year, month), 0)
+  }
+
+  function getPrevPeriodTotal(rows: AccountRow[], year: number, month: number): number {
+    return rows.reduce((sum, a) => sum + getPrev(a.id, year, month), 0)
+  }
 
   useEffect(() => {
     supabase
@@ -324,6 +356,18 @@ export default function BudgetMatrix({
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowActuals((v) => !v)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              showActuals
+                ? 'bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+            )}
+          >
+            <Columns3 size={13} />
+            Utfall {comparisonYear}
+          </button>
+          <button
             onClick={() => setDeviationEnabled((v) => !v)}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
@@ -354,12 +398,19 @@ export default function BudgetMatrix({
         <table className="text-xs min-w-max">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="sticky left-0 bg-gray-50 px-3 py-2.5 text-left font-medium text-gray-500 w-56 z-10">Konto</th>
+              <th
+                rowSpan={showActuals ? 2 : 1}
+                className="sticky left-0 bg-gray-50 px-3 py-2.5 text-left font-medium text-gray-500 w-56 z-10"
+              >
+                Konto
+              </th>
               {periods.map(({ year, month }) => (
                 <th
                   key={`${year}-${month}`}
+                  colSpan={colsPerPeriod}
                   className={cn(
-                    'px-2 py-2.5 text-right font-medium w-24 min-w-[5.5rem]',
+                    'px-2 py-2.5 font-medium border-l border-gray-200',
+                    showActuals ? 'text-center' : 'text-right w-24 min-w-[5.5rem]',
                     isPastPeriod(year, month) ? 'text-gray-400' : 'text-gray-500',
                     month === currentMonth && year === currentYear && 'bg-brand-50 text-brand-600',
                   )}
@@ -367,8 +418,34 @@ export default function BudgetMatrix({
                   {MONTH_LABELS[month - 1]}{year !== scenario.start_year ? ` ${year}` : ''}
                 </th>
               ))}
-              <th className="px-3 py-2.5 text-right font-medium text-gray-700 w-28 bg-gray-100">Helår</th>
+              <th
+                colSpan={colsPerPeriod}
+                className={cn(
+                  'px-3 py-2.5 font-medium text-gray-700 bg-gray-100 border-l border-gray-300',
+                  showActuals ? 'text-center' : 'text-right w-28',
+                )}
+              >
+                Helår
+              </th>
             </tr>
+            {showActuals && (
+              <tr className="bg-gray-50 border-b border-gray-200">
+                {periods.map(({ year, month }) => (
+                  <Fragment key={`${year}-${month}`}>
+                    <th className="px-2 pb-2 text-right font-normal text-gray-400 w-20 min-w-[4.5rem] border-l border-gray-200">
+                      {year - 1}
+                    </th>
+                    <th className="px-2 pb-2 text-right font-medium text-gray-500 w-24 min-w-[5.5rem]">
+                      Budget
+                    </th>
+                  </Fragment>
+                ))}
+                <th className="px-2 pb-2 text-right font-normal text-gray-400 bg-gray-100 border-l border-gray-300 w-24">
+                  {comparisonYear}
+                </th>
+                <th className="px-3 pb-2 text-right font-medium text-gray-600 bg-gray-100 w-28">Budget</th>
+              </tr>
+            )}
           </thead>
 
           <tbody>
@@ -401,19 +478,36 @@ export default function BudgetMatrix({
                     {periods.map(({ year, month }) => {
                       const total = rows.reduce((sum, a) => sum + getValue(a.id, year, month), 0)
                       return (
-                        <td
-                          key={`${year}-${month}`}
-                          className={cn(
-                            'px-2 py-2 text-right text-xs transition-colors',
-                            isCollapsed ? 'font-semibold text-gray-800' : 'font-medium text-gray-500',
+                        <Fragment key={`${year}-${month}`}>
+                          {showActuals && (
+                            <ActualCell
+                              value={isCollapsed ? getPrevPeriodTotal(rows, year, month) : 0}
+                              className={cn('py-2', isCollapsed && 'font-semibold text-gray-500')}
+                            />
                           )}
-                        >
-                          {isCollapsed ? fmt(total) : ''}
-                        </td>
+                          <td
+                            className={cn(
+                              'px-2 py-2 text-right text-xs transition-colors',
+                              isCollapsed ? 'font-semibold text-gray-800' : 'font-medium text-gray-500',
+                            )}
+                          >
+                            {isCollapsed ? fmt(total) : ''}
+                          </td>
+                        </Fragment>
                       )
                     })}
+                    {showActuals && (
+                      <ActualCell
+                        value={isCollapsed ? rows.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0) : 0}
+                        className={cn(
+                          'py-2 border-l border-gray-300',
+                          isCollapsed ? 'font-semibold text-gray-500 bg-gray-100' : 'bg-gray-50',
+                        )}
+                      />
+                    )}
                     <td className={cn(
-                      'px-3 py-2 text-right text-xs border-l border-gray-200 transition-colors',
+                      'px-3 py-2 text-right text-xs transition-colors',
+                      !showActuals && 'border-l border-gray-200',
                       isCollapsed
                         ? 'font-bold text-gray-900 bg-gray-100'
                         : 'font-medium text-gray-400 bg-gray-50',
@@ -514,14 +608,25 @@ export default function BudgetMatrix({
                           </td>
 
                           {periods.map(({ year, month }, periodIdx) => {
+                            const prevCell = showActuals ? (
+                              <ActualCell
+                                key={`prev-${year}-${month}`}
+                                value={getPrev(account.id, year, month)}
+                                className={isIC ? 'bg-blue-50/20' : undefined}
+                              />
+                            ) : null
+
                             if (isIC) {
                               // IC parent row: read-only sum
                               return (
-                                <td key={`${year}-${month}`} className="px-1 py-0.5">
-                                  <div className="px-2 py-1.5 text-right text-gray-500 tabular-nums">
-                                    {fmt(getValue(account.id, year, month))}
-                                  </div>
-                                </td>
+                                <Fragment key={`${year}-${month}`}>
+                                  {prevCell}
+                                  <td className="px-1 py-0.5">
+                                    <div className="px-2 py-1.5 text-right text-gray-500 tabular-nums">
+                                      {fmt(getValue(account.id, year, month))}
+                                    </div>
+                                  </td>
+                                </Fragment>
                               )
                             }
 
@@ -531,7 +636,9 @@ export default function BudgetMatrix({
                             const isSaving = saving.has(key)
                             const devClass = !isPast ? deviationClass(account.id, year, month) : ''
                             return (
-                              <td key={`${year}-${month}`} className="px-1 py-0.5">
+                              <Fragment key={`${year}-${month}`}>
+                              {prevCell}
+                              <td className="px-1 py-0.5">
                                 {isPast || effectivelyLocked ? (
                                   <div className={cn(
                                     'px-2 py-1.5 text-right rounded',
@@ -573,11 +680,22 @@ export default function BudgetMatrix({
                                   </div>
                                 )}
                               </td>
+                              </Fragment>
                             )
                           })}
 
+                          {showActuals && (
+                            <ActualCell
+                              value={getPrevRowTotal(account.id)}
+                              className={cn(
+                                'border-l border-gray-300',
+                                isIC ? 'bg-blue-50/20' : 'bg-gray-50',
+                              )}
+                            />
+                          )}
                           <td className={cn(
-                            'px-3 py-1 text-right font-medium border-l border-gray-200',
+                            'px-3 py-1 text-right font-medium',
+                            !showActuals && 'border-l border-gray-200',
                             isIC ? 'text-blue-600 bg-blue-50/20' : 'text-gray-700 bg-gray-50'
                           )}>
                             {fmt(rowTotal)}
@@ -603,7 +721,11 @@ export default function BudgetMatrix({
                                     const value = icEntries.get(icKey) ?? 0
                                     const isSaving = icSaving.has(icKey)
                                     return (
-                                      <td key={`${year}-${month}`} className="px-1 py-0.5">
+                                      <Fragment key={`${year}-${month}`}>
+                                      {showActuals && (
+                                        <td className="bg-blue-50/20 border-l border-gray-200" />
+                                      )}
+                                      <td className="px-1 py-0.5">
                                         {isPast || effectivelyLocked ? (
                                           <div className="px-2 py-1.5 text-right text-gray-400 bg-blue-50/30 rounded tabular-nums">
                                             {fmt(value)}
@@ -633,9 +755,16 @@ export default function BudgetMatrix({
                                           </div>
                                         )}
                                       </td>
+                                      </Fragment>
                                     )
                                   })}
-                                  <td className="px-3 py-1 text-right text-blue-600 tabular-nums bg-blue-50/30 border-l border-blue-100">
+                                  {showActuals && (
+                                    <td className="bg-blue-50/20 border-l border-gray-300" />
+                                  )}
+                                  <td className={cn(
+                                    'px-3 py-1 text-right text-blue-600 tabular-nums bg-blue-50/30',
+                                    !showActuals && 'border-l border-blue-100',
+                                  )}>
                                     {fmt(subTotal)}
                                   </td>
                                 </tr>
@@ -645,7 +774,7 @@ export default function BudgetMatrix({
                             {/* Add counterpart row */}
                             {!effectivelyLocked && availableCounterparts.length > 0 && (
                               <tr className="border-t border-blue-50 bg-blue-50/10">
-                                <td className="sticky left-0 bg-blue-50/10 px-3 py-1.5 pl-9 z-10" colSpan={periods.length + 2}>
+                                <td className="sticky left-0 bg-blue-50/10 px-3 py-1.5 pl-9 z-10" colSpan={totalCols}>
                                   <div className="flex items-center gap-2">
                                     <Plus size={12} className="text-blue-400 shrink-0" />
                                     <select
@@ -673,7 +802,7 @@ export default function BudgetMatrix({
                         {/* Inline comment row (non-IC only) */}
                         {!isIC && isCommentOpen && (
                           <tr className="border-t border-brand-100 bg-brand-50/30">
-                            <td className="sticky left-0 bg-brand-50/30 px-3 py-2 z-10" colSpan={periods.length + 2}>
+                            <td className="sticky left-0 bg-brand-50/30 px-3 py-2 z-10" colSpan={totalCols}>
                               <div className="flex items-start gap-2">
                                 <MessageSquare size={12} className="text-brand-400 mt-2 shrink-0" />
                                 <textarea
@@ -708,12 +837,29 @@ export default function BudgetMatrix({
                       {periods.map(({ year, month }) => {
                         const total = rows.reduce((sum, a) => sum + getValue(a.id, year, month), 0)
                         return (
-                          <td key={`${year}-${month}`} className="px-2 py-1.5 text-right font-medium text-gray-700">
-                            {fmt(total)}
-                          </td>
+                          <Fragment key={`${year}-${month}`}>
+                            {showActuals && (
+                              <ActualCell
+                                value={getPrevPeriodTotal(rows, year, month)}
+                                className="py-1.5 font-medium text-gray-500 bg-gray-100/60"
+                              />
+                            )}
+                            <td className="px-2 py-1.5 text-right font-medium text-gray-700">
+                              {fmt(total)}
+                            </td>
+                          </Fragment>
                         )
                       })}
-                      <td className="px-3 py-1.5 text-right font-semibold text-gray-800 bg-gray-100 border-l border-gray-200">
+                      {showActuals && (
+                        <ActualCell
+                          value={rows.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0)}
+                          className="py-1.5 font-medium text-gray-500 bg-gray-100 border-l border-gray-300"
+                        />
+                      )}
+                      <td className={cn(
+                        'px-3 py-1.5 text-right font-semibold text-gray-800 bg-gray-100',
+                        !showActuals && 'border-l border-gray-200',
+                      )}>
                         {fmt(sectionTotal)}
                       </td>
                     </tr>
@@ -725,11 +871,28 @@ export default function BudgetMatrix({
             <tr className="border-t-2 border-gray-300 bg-gray-100">
               <td className="sticky left-0 bg-gray-100 px-3 py-2 font-semibold text-gray-800">Totalt</td>
               {periods.map(({ year, month }) => (
-                <td key={`${year}-${month}`} className="px-2 py-2 text-right font-semibold text-gray-800">
-                  {fmt(getPeriodTotal(year, month))}
-                </td>
+                <Fragment key={`${year}-${month}`}>
+                  {showActuals && (
+                    <ActualCell
+                      value={getPrevPeriodTotal(accounts, year, month)}
+                      className="py-2 font-semibold text-gray-500 bg-gray-100"
+                    />
+                  )}
+                  <td className="px-2 py-2 text-right font-semibold text-gray-800">
+                    {fmt(getPeriodTotal(year, month))}
+                  </td>
+                </Fragment>
               ))}
-              <td className="px-3 py-2 text-right font-bold text-gray-900 bg-gray-200 border-l border-gray-300">
+              {showActuals && (
+                <ActualCell
+                  value={accounts.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0)}
+                  className="py-2 font-semibold text-gray-500 bg-gray-200 border-l border-gray-400"
+                />
+              )}
+              <td className={cn(
+                'px-3 py-2 text-right font-bold text-gray-900 bg-gray-200',
+                !showActuals && 'border-l border-gray-300',
+              )}>
                 {fmt(getGrandTotal())}
               </td>
             </tr>

@@ -137,6 +137,22 @@ export default function HelpPanel() {
                 Matrisen visar konton som rader och månader som kolumner. Belopp sparas automatiskt när du lämnar en cell.
               </p>
 
+              <h4 className="font-medium text-gray-800 mb-1.5">Jämför mot innevarande år</h4>
+              <p className="text-gray-600 mb-2">
+                Knappen <strong>Utfall &lt;år&gt;</strong> överst i matrisen visar en extra kolumn till vänster om varje
+                budgetfält. Under varje månad får du då två kolumner: utfallet för samma månad året innan (grå,
+                skrivskyddad) och budgetfältet du matar in i.
+              </p>
+              <ul className="space-y-1.5 text-gray-600 mb-4">
+                <li>Kolumnen finns även på <strong>Helår</strong>, så du kan jämföra årssumman direkt.</li>
+                <li>Sektionssummor och totalraden visar motsvarande jämförelsesiffra.</li>
+                <li>
+                  Är kolumnen tom saknas utfallsdata för det året — importera via
+                  {' '}<strong>Admin → Import</strong> eller vänta på synken från Fabric.
+                </li>
+                <li>Stäng av kolumnerna med samma knapp om du vill ha en smalare tabell.</li>
+              </ul>
+
               <h4 className="font-medium text-gray-800 mb-1.5">Tangentbordsnavigation</h4>
               <div className="overflow-hidden rounded-lg border border-gray-200 mb-4">
                 <table className="w-full text-xs">
