@@ -113,9 +113,9 @@ export default function HelpPanel() {
               </p>
               <h4 className="font-medium text-gray-800 mb-1.5">Så här börjar du</h4>
               <ol className="list-decimal list-inside space-y-1.5 text-gray-600 mb-4">
-                <li>Välj <strong>bolag</strong> med bolagsflikarna längst upp.</li>
-                <li>Välj ett <strong>scenario</strong> i rullgardinsmenyn (t.ex. "Budget 2026").</li>
-                <li>Välj ett <strong>kostnadsställe</strong> (KS) i listan till vänster.</li>
+                <li>Välj <strong>bolag</strong> i den första rullgardinsmenyn.</li>
+                <li>Välj ett <strong>scenario</strong> i nästa rullgardinsmeny (t.ex. "Budget 2026").</li>
+                <li>Välj ett <strong>kostnadsställe</strong> (KS) i den sista rullgardinsmenyn.</li>
                 <li>Fyll i belopp i <strong>Matrisvyn</strong> eller se sammanfattning i <strong>KS-översikten</strong>.</li>
               </ol>
               <h4 className="font-medium text-gray-800 mb-1.5">Deadline-banner</h4>

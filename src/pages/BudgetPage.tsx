@@ -112,25 +112,24 @@ export default function BudgetPage() {
         </div>
       </div>
 
-      {/* Company tabs */}
-      <div className="flex gap-1 mb-5 border-b border-gray-200">
-        {companies.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setSelectedCompanyId(c.id)}
-            className={cn(
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              selectedCompanyId === c.id
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700',
-            )}
-          >
-            {c.name}
-          </button>
-        ))}
-      </div>
-
       <div className="flex gap-4 mb-6">
+        {/* Company selector */}
+        <div className="flex-1 max-w-xs">
+          <label className="block text-xs font-medium text-gray-500 mb-1">Bolag</label>
+          <select
+            value={selectedCompanyId ?? ''}
+            onChange={(e) => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {companies.length === 0 && <option value="">Inga bolag</option>}
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Scenario selector */}
         <div className="flex-1 max-w-sm">
           <label className="block text-xs font-medium text-gray-500 mb-1">Scenario</label>
