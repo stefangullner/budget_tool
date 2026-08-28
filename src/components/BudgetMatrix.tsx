@@ -44,6 +44,25 @@ function parseSEK(s: string): number {
   return isNaN(n) ? 0 : n
 }
 
+/** Row height / column width presets — "compact" fits more months on screen. */
+const DENSITY = {
+  normal: {
+    table: 'text-xs',
+    nameCol: 'w-56',
+    namePad: 'px-3',
+    cellPad: 'px-2',
+    budgetCol: 'w-24 min-w-[5.5rem]',
+    actualCol: 'w-20 min-w-[4.5rem]',
+    totalCol: 'w-28',
+    inputPad: 'px-2 py-1.5',
+  },
+  compact: {
+    table: 'text-[10.5px]',
+    nameCol: 'w-40',
+    namePad: 'px-2',
+    cellPad: 'px-1',
+    budgetCol: 'w-16 min-w-[3.75rem]',
+    actualCol: 'w-14 min-w-[3.25rem]',
     totalCol: 'w-20',
     inputPad: 'px-1 py-1',
   },
@@ -588,7 +607,7 @@ export default function BudgetMatrix({
                                 <span className="font-mono text-gray-400 mr-1">{account.account_number}</span>
                                 <span className="text-gray-700">{account.name}</span>
                                 {isIC && (
-                                  <span className="ml-1 px-1 py-0.5 rounded text-blue-500 bg-blue-50 text-xs font-medium shrink-0">IC</span>
+                                  <span className="ml-1 px-1 py-0.5 rounded text-blue-500 bg-blue-50 font-medium shrink-0">IC</span>
                                 )}
                               </div>
                               {!isIC && (
@@ -724,6 +743,7 @@ export default function BudgetMatrix({
 
                           {showActuals && (
                             <ActualCell
+                              pad={d.cellPad}
                               value={getPrevRowTotal(account.id)}
                               className={cn(
                                 'border-l border-gray-300',
@@ -732,7 +752,8 @@ export default function BudgetMatrix({
                             />
                           )}
                           <td className={cn(
-                            'px-3 py-1 text-right font-medium',
+                            'py-1 text-right font-medium',
+                            d.namePad,
                             !showActuals && 'border-l border-gray-200',
                             isIC ? 'text-blue-600 bg-blue-50/20' : 'text-gray-700 bg-gray-50'
                           )}>
@@ -748,7 +769,7 @@ export default function BudgetMatrix({
                               const subTotal = getICSubRowTotal(account.id, counterpartId)
                               return (
                                 <tr key={counterpartId} className="border-t border-blue-100 bg-blue-50/20">
-                                  <td className="sticky left-0 bg-blue-50/20 px-3 py-1 pl-9 z-10">
+                                  <td className={cn('sticky left-0 bg-blue-50/20 py-1 z-10', d.namePad, 'pl-9')}>
                                     <span className="text-blue-600 font-medium">
                                       → {cpCompany?.name ?? `Bolag ${counterpartId}`}
                                     </span>
@@ -765,7 +786,7 @@ export default function BudgetMatrix({
                                       )}
                                       <td className="px-1 py-0.5">
                                         {isPast || effectivelyLocked ? (
-                                          <div className="px-2 py-1.5 text-right text-gray-400 bg-blue-50/30 rounded tabular-nums">
+                                          <div className={cn('text-right text-gray-400 bg-blue-50/30 rounded tabular-nums', d.inputPad)}>
                                             {fmt(value)}
                                           </div>
                                         ) : (
@@ -783,7 +804,7 @@ export default function BudgetMatrix({
                                                 e.target.value = value !== 0 ? String(value) : ''
                                                 e.target.select()
                                               }}
-                                              className="w-full px-2 py-1.5 text-right rounded border border-blue-100 hover:border-blue-300 focus:border-blue-400 focus:ring-1 focus:ring-blue-300 focus:outline-none bg-white text-gray-900"
+                                              className={cn('w-full text-right rounded border border-blue-100 hover:border-blue-300 focus:border-blue-400 focus:ring-1 focus:ring-blue-300 focus:outline-none bg-white text-gray-900', d.inputPad)}
                                             />
                                             {isSaving && (
                                               <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
@@ -800,7 +821,8 @@ export default function BudgetMatrix({
                                     <td className="bg-blue-50/20 border-l border-gray-300" />
                                   )}
                                   <td className={cn(
-                                    'px-3 py-1 text-right text-blue-600 tabular-nums bg-blue-50/30',
+                                    'py-1 text-right text-blue-600 tabular-nums bg-blue-50/30',
+                                    d.namePad,
                                     !showActuals && 'border-l border-blue-100',
                                   )}>
                                     {fmt(subTotal)}
@@ -869,7 +891,7 @@ export default function BudgetMatrix({
 
                   {!isCollapsed && (
                     <tr className="border-t border-gray-200 bg-gray-50/80">
-                      <td className="sticky left-0 bg-gray-50/80 px-3 py-1.5 font-medium text-gray-600">
+                      <td className={cn('sticky left-0 bg-gray-50/80 py-1.5 font-medium text-gray-600', d.namePad)}>
                         Σ {section}
                       </td>
                       {periods.map(({ year, month }) => {
@@ -878,11 +900,12 @@ export default function BudgetMatrix({
                           <Fragment key={`${year}-${month}`}>
                             {showActuals && (
                               <ActualCell
+                                pad={d.cellPad}
                                 value={getPrevPeriodTotal(rows, year, month)}
                                 className="py-1.5 font-medium text-gray-500 bg-gray-100/60"
                               />
                             )}
-                            <td className="px-2 py-1.5 text-right font-medium text-gray-700">
+                            <td className={cn('py-1.5 text-right font-medium text-gray-700', d.cellPad)}>
                               {fmt(total)}
                             </td>
                           </Fragment>
@@ -890,12 +913,14 @@ export default function BudgetMatrix({
                       })}
                       {showActuals && (
                         <ActualCell
+                          pad={d.cellPad}
                           value={rows.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0)}
                           className="py-1.5 font-medium text-gray-500 bg-gray-100 border-l border-gray-300"
                         />
                       )}
                       <td className={cn(
-                        'px-3 py-1.5 text-right font-semibold text-gray-800 bg-gray-100',
+                        'py-1.5 text-right font-semibold text-gray-800 bg-gray-100',
+                        d.namePad,
                         !showActuals && 'border-l border-gray-200',
                       )}>
                         {fmt(sectionTotal)}
@@ -907,28 +932,31 @@ export default function BudgetMatrix({
             })}
 
             <tr className="border-t-2 border-gray-300 bg-gray-100">
-              <td className="sticky left-0 bg-gray-100 px-3 py-2 font-semibold text-gray-800">Totalt</td>
+              <td className={cn('sticky left-0 bg-gray-100 py-2 font-semibold text-gray-800', d.namePad)}>Totalt</td>
               {periods.map(({ year, month }) => (
                 <Fragment key={`${year}-${month}`}>
                   {showActuals && (
                     <ActualCell
+                      pad={d.cellPad}
                       value={getPrevPeriodTotal(accounts, year, month)}
                       className="py-2 font-semibold text-gray-500 bg-gray-100"
                     />
                   )}
-                  <td className="px-2 py-2 text-right font-semibold text-gray-800">
+                  <td className={cn('py-2 text-right font-semibold text-gray-800', d.cellPad)}>
                     {fmt(getPeriodTotal(year, month))}
                   </td>
                 </Fragment>
               ))}
               {showActuals && (
                 <ActualCell
+                  pad={d.cellPad}
                   value={accounts.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0)}
                   className="py-2 font-semibold text-gray-500 bg-gray-200 border-l border-gray-400"
                 />
               )}
               <td className={cn(
-                'px-3 py-2 text-right font-bold text-gray-900 bg-gray-200',
+                'py-2 text-right font-bold text-gray-900 bg-gray-200',
+                d.namePad,
                 !showActuals && 'border-l border-gray-300',
               )}>
                 {fmt(getGrandTotal())}
