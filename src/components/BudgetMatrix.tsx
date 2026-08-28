@@ -1,5 +1,5 @@
 import { useRef, useCallback, Fragment, useState, useEffect, useMemo } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3 } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
@@ -44,12 +44,20 @@ function parseSEK(s: string): number {
   return isNaN(n) ? 0 : n
 }
 
+    totalCol: 'w-20',
+    inputPad: 'px-1 py-1',
+  },
+} as const
+
+type Density = (typeof DENSITY)[keyof typeof DENSITY]
+
 /** Read-only cell showing last year's actual next to the budget input. */
-function ActualCell({ value, className }: { value: number; className?: string }) {
+function ActualCell({ value, pad, className }: { value: number; pad: string; className?: string }) {
   return (
     <td
       className={cn(
-        'px-2 py-1 text-right tabular-nums text-gray-400 bg-gray-50/70 border-l border-gray-200',
+        'py-1 text-right tabular-nums text-gray-400 bg-gray-50/70 border-l border-gray-200',
+        pad,
         className,
       )}
     >
@@ -188,11 +196,14 @@ export default function BudgetMatrix({
   const [percentTarget, setPercentTarget] = useState<AccountRow | null>(null)
   const [deviationEnabled, setDeviationEnabled] = useState(false)
   const [showActuals, setShowActuals] = useState(true)
+  const [compact, setCompact] = useState(false)
   const [comments, setComments] = useState<Map<number, string>>(new Map())
   const [openCommentId, setOpenCommentId] = useState<number | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
 
   const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
+
+  const d: Density = compact ? DENSITY.compact : DENSITY.normal
 
   // Comparison year columns (actuals for the same month one year earlier)
   const colsPerPeriod = showActuals ? 2 : 1
@@ -356,6 +367,19 @@ export default function BudgetMatrix({
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setCompact((v) => !v)}
+            title={compact ? 'Normal radhöjd' : 'Kompakt läge — mindre text, fler månader synliga'}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              compact
+                ? 'bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+            )}
+          >
+            <Minimize2 size={13} />
+            Kompakt
+          </button>
+          <button
             onClick={() => setShowActuals((v) => !v)}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
@@ -395,12 +419,16 @@ export default function BudgetMatrix({
       </div>
 
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
-        <table className="text-xs min-w-max">
+        <table className={cn('min-w-max', d.table)}>
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th
                 rowSpan={showActuals ? 2 : 1}
-                className="sticky left-0 bg-gray-50 px-3 py-2.5 text-left font-medium text-gray-500 w-56 z-10"
+                className={cn(
+                  'sticky left-0 bg-gray-50 py-2.5 text-left font-medium text-gray-500 z-10',
+                  d.namePad,
+                  d.nameCol,
+                )}
               >
                 Konto
               </th>
@@ -409,8 +437,9 @@ export default function BudgetMatrix({
                   key={`${year}-${month}`}
                   colSpan={colsPerPeriod}
                   className={cn(
-                    'px-2 py-2.5 font-medium border-l border-gray-200',
-                    showActuals ? 'text-center' : 'text-right w-24 min-w-[5.5rem]',
+                    'py-2.5 font-medium border-l border-gray-200',
+                    d.cellPad,
+                    showActuals ? 'text-center' : cn('text-right', d.budgetCol),
                     isPastPeriod(year, month) ? 'text-gray-400' : 'text-gray-500',
                     month === currentMonth && year === currentYear && 'bg-brand-50 text-brand-600',
                   )}
@@ -421,8 +450,9 @@ export default function BudgetMatrix({
               <th
                 colSpan={colsPerPeriod}
                 className={cn(
-                  'px-3 py-2.5 font-medium text-gray-700 bg-gray-100 border-l border-gray-300',
-                  showActuals ? 'text-center' : 'text-right w-28',
+                  'py-2.5 font-medium text-gray-700 bg-gray-100 border-l border-gray-300',
+                  d.namePad,
+                  showActuals ? 'text-center' : cn('text-right', d.totalCol),
                 )}
               >
                 Helår
@@ -432,18 +462,18 @@ export default function BudgetMatrix({
               <tr className="bg-gray-50 border-b border-gray-200">
                 {periods.map(({ year, month }) => (
                   <Fragment key={`${year}-${month}`}>
-                    <th className="px-2 pb-2 text-right font-normal text-gray-400 w-20 min-w-[4.5rem] border-l border-gray-200">
+                    <th className={cn('pb-2 text-right font-normal text-gray-400 border-l border-gray-200', d.cellPad, d.actualCol)}>
                       {year - 1}
                     </th>
-                    <th className="px-2 pb-2 text-right font-medium text-gray-500 w-24 min-w-[5.5rem]">
+                    <th className={cn('pb-2 text-right font-medium text-gray-500', d.cellPad, d.budgetCol)}>
                       Budget
                     </th>
                   </Fragment>
                 ))}
-                <th className="px-2 pb-2 text-right font-normal text-gray-400 bg-gray-100 border-l border-gray-300 w-24">
+                <th className={cn('pb-2 text-right font-normal text-gray-400 bg-gray-100 border-l border-gray-300', d.cellPad, d.actualCol)}>
                   {comparisonYear}
                 </th>
-                <th className="px-3 pb-2 text-right font-medium text-gray-600 bg-gray-100 w-28">Budget</th>
+                <th className={cn('pb-2 text-right font-medium text-gray-600 bg-gray-100', d.namePad, d.totalCol)}>Budget</th>
               </tr>
             )}
           </thead>
@@ -460,16 +490,16 @@ export default function BudgetMatrix({
                     className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100 transition-colors"
                     onClick={() => toggleSection(section)}
                   >
-                    <td className="sticky left-0 bg-gray-50 hover:bg-gray-100 px-3 py-2 z-10 transition-colors">
+                    <td className={cn('sticky left-0 bg-gray-50 hover:bg-gray-100 py-2 z-10 transition-colors', d.namePad)}>
                       <div className="flex items-center gap-1.5">
                         {isCollapsed
                           ? <ChevronRight size={13} className="text-gray-400 shrink-0" />
                           : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        <span className="font-semibold text-gray-600 uppercase tracking-wide">
                           {section}
                         </span>
                         {isCollapsed && (
-                          <span className="ml-2 text-xs text-gray-400 font-normal normal-case tracking-normal">
+                          <span className="ml-2 text-gray-400 font-normal normal-case tracking-normal">
                             {rows.length} konton
                           </span>
                         )}
@@ -481,13 +511,15 @@ export default function BudgetMatrix({
                         <Fragment key={`${year}-${month}`}>
                           {showActuals && (
                             <ActualCell
+                              pad={d.cellPad}
                               value={isCollapsed ? getPrevPeriodTotal(rows, year, month) : 0}
                               className={cn('py-2', isCollapsed && 'font-semibold text-gray-500')}
                             />
                           )}
                           <td
                             className={cn(
-                              'px-2 py-2 text-right text-xs transition-colors',
+                              'py-2 text-right transition-colors',
+                              d.cellPad,
                               isCollapsed ? 'font-semibold text-gray-800' : 'font-medium text-gray-500',
                             )}
                           >
@@ -498,6 +530,7 @@ export default function BudgetMatrix({
                     })}
                     {showActuals && (
                       <ActualCell
+                        pad={d.cellPad}
                         value={isCollapsed ? rows.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0) : 0}
                         className={cn(
                           'py-2 border-l border-gray-300',
@@ -506,7 +539,8 @@ export default function BudgetMatrix({
                       />
                     )}
                     <td className={cn(
-                      'px-3 py-2 text-right text-xs transition-colors',
+                      'py-2 text-right transition-colors',
+                      d.namePad,
                       !showActuals && 'border-l border-gray-200',
                       isCollapsed
                         ? 'font-bold text-gray-900 bg-gray-100'
@@ -535,7 +569,8 @@ export default function BudgetMatrix({
                           isIC ? 'hover:bg-blue-50/30 bg-blue-50/10' : 'hover:bg-gray-50/50'
                         )}>
                           <td className={cn(
-                            'sticky left-0 px-3 py-1 z-10',
+                            'sticky left-0 py-1 z-10',
+                            d.namePad,
                             isIC ? 'bg-blue-50/10 hover:bg-blue-50/30' : 'bg-white hover:bg-gray-50/50'
                           )}>
                             <div className="flex items-center justify-between gap-1">
@@ -611,6 +646,7 @@ export default function BudgetMatrix({
                             const prevCell = showActuals ? (
                               <ActualCell
                                 key={`prev-${year}-${month}`}
+                                pad={d.cellPad}
                                 value={getPrev(account.id, year, month)}
                                 className={isIC ? 'bg-blue-50/20' : undefined}
                               />
@@ -622,7 +658,7 @@ export default function BudgetMatrix({
                                 <Fragment key={`${year}-${month}`}>
                                   {prevCell}
                                   <td className="px-1 py-0.5">
-                                    <div className="px-2 py-1.5 text-right text-gray-500 tabular-nums">
+                                    <div className={cn('text-right text-gray-500 tabular-nums', d.inputPad)}>
                                       {fmt(getValue(account.id, year, month))}
                                     </div>
                                   </td>
@@ -641,7 +677,8 @@ export default function BudgetMatrix({
                               <td className="px-1 py-0.5">
                                 {isPast || effectivelyLocked ? (
                                   <div className={cn(
-                                    'px-2 py-1.5 text-right rounded',
+                                    'text-right rounded',
+                                    d.inputPad,
                                     isPast ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
                                   )}>
                                     {fmt(value)}
@@ -668,7 +705,8 @@ export default function BudgetMatrix({
                                       }}
                                       onKeyDown={(e) => handleKeyDown(e, globalRowIdx, periodIdx)}
                                       className={cn(
-                                        'w-full px-2 py-1.5 text-right rounded border focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white text-gray-900',
+                                        'w-full text-right rounded border focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white text-gray-900',
+                                        d.inputPad,
                                         devClass || 'border-transparent hover:border-gray-200',
                                       )}
                                     />
