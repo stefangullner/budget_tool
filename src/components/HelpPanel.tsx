@@ -153,6 +153,13 @@ export default function HelpPanel() {
                 <li>Stäng av kolumnerna med samma knapp om du vill ha en smalare tabell.</li>
               </ul>
 
+              <h4 className="font-medium text-gray-800 mb-1.5">Kompakt läge</h4>
+              <p className="text-gray-600 mb-4">
+                Knappen <strong>Kompakt</strong> krymper text, radhöjd och kolumnbredder så att fler månader ryms på
+                skärmen samtidigt — användbart när utfallskolumnerna är påslagna och tabellen blir dubbelt så bred.
+                Klicka igen för normal storlek.
+              </p>
+
               <h4 className="font-medium text-gray-800 mb-1.5">Tangentbordsnavigation</h4>
               <div className="overflow-hidden rounded-lg border border-gray-200 mb-4">
                 <table className="w-full text-xs">
