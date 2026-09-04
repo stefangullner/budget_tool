@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
-import { Check, X, Clock, ArrowLeftRight } from 'lucide-react'
+import { Check, X, Clock, ArrowLeftRight, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -23,6 +23,7 @@ export default function AccountConfigPage() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
   const [filterBudgetable, setFilterBudgetable] = useState<string>('all')
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     supabase.from('companies').select('*').order('id').then(({ data }) => {
@@ -177,6 +178,31 @@ export default function AccountConfigPage() {
     .map(s => ({ section: s, rows: filtered.filter(a => (a.config?.section ?? null) === s) }))
     .filter(g => g.rows.length > 0)
 
+  function sectionLabel(section: string | null) {
+    return section ?? '— Ingen sektion'
+  }
+
+  function toggleSection(label: string) {
+    setCollapsedSections(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
+
+  // A search would hide its own matches inside collapsed groups, so force-expand while searching
+  const isSearching = search.trim() !== ''
+  const allCollapsed =
+    groupedSections.length > 0 &&
+    groupedSections.every(g => collapsedSections.has(sectionLabel(g.section)))
+
+  function toggleAllSections() {
+    setCollapsedSections(
+      allCollapsed ? new Set() : new Set(groupedSections.map(g => sectionLabel(g.section))),
+    )
+  }
+
   return (
     <div className="p-8 max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
@@ -243,6 +269,15 @@ export default function AccountConfigPage() {
           <option value="yes">Budgetera</option>
           <option value="no">Ej budgetera</option>
         </select>
+        <button
+          onClick={toggleAllSections}
+          disabled={isSearching || groupedSections.length === 0}
+          title={isSearching ? 'Sektioner är alltid öppna vid sökning' : undefined}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+        >
+          {allCollapsed ? <ChevronsUpDown size={13} /> : <ChevronsDownUp size={13} />}
+          {allCollapsed ? 'Expandera alla' : 'Fäll ihop alla'}
+        </button>
         <span className="text-xs text-gray-400 ml-auto">
           {budgetableCount} av {accounts.length} konton budgeteras
         </span>
@@ -271,23 +306,41 @@ export default function AccountConfigPage() {
               </tr>
             </thead>
             <tbody>
-              {groupedSections.map(({ section, rows }) => (
+              {groupedSections.map(({ section, rows }) => {
+                const label = sectionLabel(section)
+                const isCollapsed = !isSearching && collapsedSections.has(label)
+                const budgetableInSection = rows.filter((a) => a.config?.is_budgetable).length
+
+                return (
                 <Fragment key={`section-${section ?? 'none'}`}>
-                  <tr className="bg-gray-50 border-y border-gray-200">
-                    <td colSpan={5} className="px-4 py-2">
+                  <tr
+                    className="bg-gray-50 border-y border-gray-200 cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    onClick={() => toggleSection(label)}
+                  >
+                    <td colSpan={6} className="px-4 py-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          {section ?? '— Ingen sektion'} ({rows.length})
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {isCollapsed
+                            ? <ChevronRight size={13} className="text-gray-400 shrink-0" />
+                            : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            {label} ({rows.length})
+                          </span>
+                          {isCollapsed && (
+                            <span className="ml-2 text-xs text-gray-400 font-normal normal-case tracking-normal">
+                              {budgetableInSection} budgeteras
+                            </span>
+                          )}
+                        </div>
                         <div className="flex gap-1.5">
                           <button
-                            onClick={() => handleBulkToggleSection(section, true)}
+                            onClick={(e) => { e.stopPropagation(); handleBulkToggleSection(section, true) }}
                             className="px-2 py-0.5 text-xs rounded border border-brand-200 text-brand-700 hover:bg-brand-50 transition-colors"
                           >
                             Aktivera alla
                           </button>
                           <button
-                            onClick={() => handleBulkToggleSection(section, false)}
+                            onClick={(e) => { e.stopPropagation(); handleBulkToggleSection(section, false) }}
                             className="px-2 py-0.5 text-xs rounded border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors"
                           >
                             Inaktivera alla
@@ -296,7 +349,7 @@ export default function AccountConfigPage() {
                       </div>
                     </td>
                   </tr>
-                  {rows.map((account) => (
+                  {!isCollapsed && rows.map((account) => (
                     <tr key={account.id} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
                       <td className="px-4 py-2.5 font-mono text-gray-700">{account.account_number}</td>
                       <td className="px-4 py-2.5 text-gray-900">{account.name}</td>
@@ -352,7 +405,8 @@ export default function AccountConfigPage() {
                     </tr>
                   ))}
                 </Fragment>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

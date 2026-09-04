@@ -234,9 +234,26 @@ export default function HelpPanel() {
               </p>
 
               <h4 className="font-medium text-gray-800 mb-1.5">Sektioner</h4>
-              <p className="text-gray-600 mb-4">
+              <p className="text-gray-600 mb-2">
                 Konton grupperas i sektioner (t.ex. "Personalkostnader", "Lokalkostnader"). Sektionsnamnet sätts per konto under kontoinställningarna och används för gruppering i budgetmatrisen.
               </p>
+              <ul className="space-y-1.5 text-gray-600 mb-4">
+                <li>
+                  Klicka på en <strong>sektionsrubrik</strong> för att fälla ihop eller expandera gruppen — samma sätt
+                  som i budgetmatrisen. När en grupp är ihopfälld visas hur många av dess konton som budgeteras.
+                </li>
+                <li>
+                  <strong>Fäll ihop alla</strong> ovanför tabellen stänger samtliga grupper på en gång, så du får en
+                  överblick över sektionerna istället för alla konton.
+                </li>
+                <li>
+                  <strong>Aktivera alla</strong> / <strong>Inaktivera alla</strong> fungerar även när gruppen är
+                  ihopfälld.
+                </li>
+                <li>
+                  Vid <strong>sökning</strong> öppnas alla grupper automatiskt, så inga träffar göms undan.
+                </li>
+              </ul>
 
               <h4 className="font-medium text-gray-800 mb-1.5">Intercompany-konton (IC)</h4>
               <p className="text-gray-600">
