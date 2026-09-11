@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { Upload, Download, CheckCircle2, XCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAllRows } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
 
@@ -36,11 +36,17 @@ export default function ImportPage() {
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   useEffect(() => {
     supabase.from('companies').select('*').then(({ data }) => setCompanies(data ?? []))
-    supabase.from('accounts').select('id, company_id, account_number, name').then(({ data }) => setAccounts((data ?? []) as Account[]))
-    supabase.from('cost_centers').select('id, company_id, code, name, is_active').then(({ data }) => setCostCenters((data ?? []) as CostCenter[]))
+    // Both tables run well past PostgREST's 1000-row cap across all companies
+    fetchAllRows<Account>((from, to) =>
+      supabase.from('accounts').select('id, company_id, account_number, name').order('id').range(from, to),
+    ).then(setAccounts)
+    fetchAllRows<CostCenter>((from, to) =>
+      supabase.from('cost_centers').select('id, company_id, code, name, is_active').order('id').range(from, to),
+    ).then(setCostCenters)
   }, [])
 
   function downloadTemplate() {
@@ -74,23 +80,44 @@ export default function ImportPage() {
     reader.readAsArrayBuffer(file)
   }
 
+  // Indexed lookups — a linear .find() per row turns a 37k-row file into
+  // hundreds of millions of comparisons and freezes the tab
+  const companyByKey = useMemo(() => {
+    const m = new Map<string, Company>()
+    for (const c of companies) {
+      m.set(c.name.trim().toLowerCase(), c)
+      if (c.org_number) m.set(c.org_number.trim(), c)
+    }
+    return m
+  }, [companies])
+
+  const accountByKey = useMemo(() => {
+    const m = new Map<string, Account>()
+    for (const a of accounts) m.set(`${a.company_id}:${a.account_number.trim()}`, a)
+    return m
+  }, [accounts])
+
+  const costCenterByKey = useMemo(() => {
+    const m = new Map<string, CostCenter>()
+    for (const k of costCenters) m.set(`${k.company_id}:${k.code.trim()}`, k)
+    return m
+  }, [costCenters])
+
   function parseRow(r: string[], rowNum: number): ParsedRow {
     const [rawCompany = '', rawAccount = '', rawKS = '', rawYear = '', rawMonth = '', rawAmount = ''] = r.map(String)
     const errors: string[] = []
 
-    const company = companies.find(
-      (c) => c.name.toLowerCase() === rawCompany.trim().toLowerCase()
-        || c.org_number === rawCompany.trim()
-    ) ?? null
-    if (!company) errors.push(`Okänt bolag "${rawCompany.trim()}"`)
+    const key = rawCompany.trim()
+    const company = companyByKey.get(key.toLowerCase()) ?? companyByKey.get(key) ?? null
+    if (!company) errors.push(`Okänt bolag "${key}"`)
 
     const account = company
-      ? accounts.find((a) => a.company_id === company.id && a.account_number === rawAccount.trim()) ?? null
+      ? accountByKey.get(`${company.id}:${rawAccount.trim()}`) ?? null
       : null
     if (company && !account) errors.push(`Konto "${rawAccount.trim()}" ej funnet för ${company.name}`)
 
     const costCenter = company
-      ? costCenters.find((k) => k.company_id === company.id && k.code === rawKS.trim()) ?? null
+      ? costCenterByKey.get(`${company.id}:${rawKS.trim()}`) ?? null
       : null
     if (company && !costCenter) errors.push(`KS "${rawKS.trim()}" ej funnet för ${company.name}`)
 
@@ -117,6 +144,21 @@ export default function ImportPage() {
   const validRows = rows.filter((r) => r.errors.length === 0)
   const errorRows = rows.filter((r) => r.errors.length > 0)
 
+  // Rendering every row of a large file locks up the browser. Show the problem
+  // rows first — those are the ones worth acting on.
+  const PREVIEW_LIMIT = 300
+  const previewRows = [...errorRows, ...validRows].slice(0, PREVIEW_LIMIT)
+  const hiddenRowCount = rows.length - previewRows.length
+
+  /** Distinct error messages with a count, so 33 000 rows collapse to a short list. */
+  const errorSummary = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const r of errorRows) {
+      for (const e of r.errors) counts.set(e, (counts.get(e) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [errorRows])
+
   async function doImport() {
     if (validRows.length === 0) return
     setImporting(true)
@@ -142,15 +184,18 @@ export default function ImportPage() {
         })
       if (error) {
         setResult({ ok: false, message: `Fel vid import (rad ${i + 1}–${i + BATCH}): ${error.message}` })
+        setProgress(null)
         setImporting(false)
         return
       }
       imported += Math.min(BATCH, toUpsert.length - i)
+      setProgress({ done: imported, total: toUpsert.length })
     }
 
     setResult({ ok: true, message: `${imported} rader importerade (${errorRows.length} rader hoppades över pga fel).` })
     setRows([])
     setFileName(null)
+    setProgress(null)
     setImporting(false)
   }
 
@@ -226,21 +271,60 @@ export default function ImportPage() {
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <p className="text-sm font-medium text-gray-700">Förhandsgranskning</p>
-              <span className="text-xs text-green-600 font-medium">{validRows.length} giltiga</span>
+              <span className="text-xs text-green-600 font-medium">
+                {validRows.length.toLocaleString('sv-SE')} giltiga
+              </span>
               {errorRows.length > 0 && (
                 <span className="text-xs text-red-600 font-medium flex items-center gap-1">
-                  <AlertTriangle size={11} /> {errorRows.length} fel
+                  <AlertTriangle size={11} /> {errorRows.length.toLocaleString('sv-SE')} fel
                 </span>
               )}
             </div>
-            <button
-              onClick={doImport}
-              disabled={importing || validRows.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-40 transition-colors"
-            >
-              {importing ? 'Importerar...' : `Importera ${validRows.length} rader`}
-            </button>
+            <div className="flex items-center gap-3">
+              {progress && (
+                <div className="flex items-center gap-2">
+                  <div className="w-28 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-brand-500 rounded-full transition-all"
+                      style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-500 tabular-nums">
+                    {progress.done.toLocaleString('sv-SE')} / {progress.total.toLocaleString('sv-SE')}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={doImport}
+                disabled={importing || validRows.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-40 transition-colors"
+              >
+                {importing ? 'Importerar...' : `Importera ${validRows.length} rader`}
+              </button>
+            </div>
           </div>
+
+          {/* Error summary — collapses thousands of rows into distinct causes */}
+          {errorSummary.length > 0 && (
+            <div className="px-4 py-3 border-b border-gray-100 bg-red-50/50">
+              <p className="text-xs font-medium text-red-800 mb-1.5">Felorsaker</p>
+              <ul className="space-y-1">
+                {errorSummary.slice(0, 15).map(([msg, count]) => (
+                  <li key={msg} className="text-xs text-red-700 flex items-baseline gap-2">
+                    <span className="tabular-nums font-medium shrink-0 w-14 text-right">
+                      {count.toLocaleString('sv-SE')}×
+                    </span>
+                    <span>{msg}</span>
+                  </li>
+                ))}
+              </ul>
+              {errorSummary.length > 15 && (
+                <p className="text-xs text-red-600 mt-1.5">
+                  …och {errorSummary.length - 15} andra felorsaker
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="overflow-x-auto max-h-96">
             <table className="w-full text-xs">
@@ -256,7 +340,7 @@ export default function ImportPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => {
+                {previewRows.map((r) => {
                   const ok = r.errors.length === 0
                   return (
                     <tr key={r.rowNum} className={cn(ok ? 'bg-white' : 'bg-red-50/40')}>
@@ -289,6 +373,12 @@ export default function ImportPage() {
               </tbody>
             </table>
           </div>
+          {hiddenRowCount > 0 && (
+            <div className="px-4 py-2 border-t border-gray-100 text-xs text-gray-400 text-center">
+              Visar {previewRows.length} av {rows.length.toLocaleString('sv-SE')} rader — felrader först.
+              Alla giltiga rader importeras oavsett vad som visas här.
+            </div>
+          )}
         </div>
       )}
     </div>

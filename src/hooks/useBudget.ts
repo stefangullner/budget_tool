@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAllRows } from '@/lib/supabase'
 import type { Scenario, Account, AccountConfig, CostCenter, BudgetEntry, ScenarioLock } from '@/types'
 
 export type AccountRow = Account & { config: AccountConfig | null }
+
+type ActualRow = { account_id: number; year: number; month: number; amount: number }
 
 export type PeriodKey = `${number}-${number}` // "2026-1"
 
@@ -70,12 +72,14 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     setAllAccounts([])
     setActualIds(new Set())
     setPrevActualIds(new Set())
-    supabase
-      .from('accounts')
-      .select('*, config:account_configs(*)')
-      .eq('company_id', companyId)
-      .order('account_number')
-      .then(({ data }) => setAllAccounts((data ?? []) as AccountRow[]))
+    fetchAllRows<AccountRow>((from, to) =>
+      supabase
+        .from('accounts')
+        .select('*, config:account_configs(*)')
+        .eq('company_id', companyId)
+        .order('account_number')
+        .range(from, to),
+    ).then(setAllAccounts)
   }, [companyId])
 
   /** Accounts the user may enter budget for. */
@@ -100,15 +104,22 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
 
   const loadEntries = useCallback(async (scenarioId: number, costCenterId: number) => {
     setLoading(true)
-    const { data } = await supabase
-      .from('budget_entries')
-      .select('account_id, year, month, amount, counterpart_company_id')
-      .eq('scenario_id', scenarioId)
-      .eq('cost_center_id', costCenterId)
+    // One KS can hold hundreds of accounts × 12 months — well past the 1000-row cap
+    const data = await fetchAllRows<BudgetEntry>((from, to) =>
+      supabase
+        .from('budget_entries')
+        .select('account_id, year, month, amount, counterpart_company_id')
+        .eq('scenario_id', scenarioId)
+        .eq('cost_center_id', costCenterId)
+        .order('account_id')
+        .order('year')
+        .order('month')
+        .range(from, to),
+    )
 
     const map = new Map<string, number>()
     const icMap = new Map<string, number>()
-    for (const row of data ?? []) {
+    for (const row of data) {
       if (row.counterpart_company_id) {
         icMap.set(periodKey(row.year, row.month) + ':' + row.account_id + ':' + row.counterpart_company_id, row.amount)
       } else {
@@ -125,17 +136,23 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     const currentYear = now.getFullYear()
     const currentMonth = now.getMonth() + 1
 
-    const { data } = await supabase
-      .from('actuals')
-      .select('account_id, year, month, amount')
-      .eq('company_id', companyId)
-      .eq('cost_center_id', costCenterId)
-      .gte('year', scenario.start_year)
-      .lte('year', scenario.end_year)
+    const data = await fetchAllRows<ActualRow>((from, to) =>
+      supabase
+        .from('actuals')
+        .select('account_id, year, month, amount')
+        .eq('company_id', companyId)
+        .eq('cost_center_id', costCenterId)
+        .gte('year', scenario.start_year)
+        .lte('year', scenario.end_year)
+        .order('account_id')
+        .order('year')
+        .order('month')
+        .range(from, to),
+    )
 
     const map = new Map<string, number>()
     const ids = new Set<number>()
-    for (const row of data ?? []) {
+    for (const row of data) {
       const isPast = row.year < currentYear || (row.year === currentYear && row.month <= currentMonth)
       if (isPast) {
         map.set(periodKey(row.year, row.month) + ':' + row.account_id, row.amount)
@@ -147,17 +164,23 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   }, [])
 
   const loadPrevActuals = useCallback(async (companyId: number, costCenterId: number, scenario: Scenario) => {
-    const { data } = await supabase
-      .from('actuals')
-      .select('account_id, year, month, amount')
-      .eq('company_id', companyId)
-      .eq('cost_center_id', costCenterId)
-      .gte('year', scenario.start_year - 1)
-      .lte('year', scenario.end_year - 1)
+    const data = await fetchAllRows<ActualRow>((from, to) =>
+      supabase
+        .from('actuals')
+        .select('account_id, year, month, amount')
+        .eq('company_id', companyId)
+        .eq('cost_center_id', costCenterId)
+        .gte('year', scenario.start_year - 1)
+        .lte('year', scenario.end_year - 1)
+        .order('account_id')
+        .order('year')
+        .order('month')
+        .range(from, to),
+    )
 
     const map = new Map<string, number>()
     const ids = new Set<number>()
-    for (const row of data ?? []) {
+    for (const row of data) {
       map.set(periodKey(row.year + 1, row.month) + ':' + row.account_id, row.amount)
       if (row.amount !== 0) ids.add(row.account_id)
     }
@@ -318,12 +341,19 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     setScenarios((prev) => [newScenario, ...prev])
 
     if (copyFromScenarioId) {
-      const { data: sourceEntries } = await supabase
-        .from('budget_entries')
-        .select('*')
-        .eq('scenario_id', copyFromScenarioId)
+      const sourceEntries = await fetchAllRows<BudgetEntry>((from, to) =>
+        supabase
+          .from('budget_entries')
+          .select('*')
+          .eq('scenario_id', copyFromScenarioId)
+          .order('cost_center_id')
+          .order('account_id')
+          .order('year')
+          .order('month')
+          .range(from, to),
+      )
 
-      if (sourceEntries && sourceEntries.length > 0) {
+      if (sourceEntries.length > 0) {
         const periods = scenarioPeriods(newScenario)
         const periodSet = new Set(periods.map((p) => periodKey(p.year, p.month)))
 
@@ -340,8 +370,9 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
             updated_by: userId,
           }))
 
-        if (toInsert.length > 0) {
-          await supabase.from('budget_entries').insert(toInsert)
+        const BATCH = 500
+        for (let i = 0; i < toInsert.length; i += BATCH) {
+          await supabase.from('budget_entries').insert(toInsert.slice(i, i + BATCH))
         }
       }
     }

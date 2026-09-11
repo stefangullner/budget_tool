@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { CheckCircle2, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAllRows } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
 
@@ -115,16 +115,22 @@ export default function IntercompanyPage() {
         }
       }
 
-      // Fetch budget entries for matching scenarios, restricted to IC accounts
-      const { data, error } = await supabase
-        .from('budget_entries')
-        .select('amount, account_id, scenario_id, year, month, counterpart_company_id, accounts(account_number, name, company_id)')
-        .in('scenario_id', matchingIds)
-        .in('account_id', [...icAccountIds])
+      // Fetch budget entries for matching scenarios, restricted to IC accounts.
+      // Spans every company and KS, so page past the 1000-row cap.
+      const data = await fetchAllRows<unknown>((from, to) =>
+        supabase
+          .from('budget_entries')
+          .select('amount, account_id, scenario_id, year, month, counterpart_company_id, accounts(account_number, name, company_id)')
+          .in('scenario_id', matchingIds)
+          .in('account_id', [...icAccountIds])
+          .order('scenario_id')
+          .order('account_id')
+          .order('year')
+          .order('month')
+          .range(from, to),
+      )
 
-      if (error) throw error
-
-      const entries = (data ?? []) as unknown as EntryRow[]
+      const entries = data as unknown as EntryRow[]
 
       // Collect periods from entries
       const periodSet = new Map<string, Period>()

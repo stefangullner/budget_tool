@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { Download, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAllRows } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
 import { sortSections } from '@/hooks/useSectionOrder'
@@ -110,17 +110,29 @@ export default function ExportPage() {
     if (!selectedScenarioId || !selectedScenario) return
     setExporting(true)
     try {
-      const [{ data: entries }, { data: accountRows }, { data: costCenterRows }, { data: sectionData }] = await Promise.all([
-        supabase
-          .from('budget_entries')
-          .select('account_id, cost_center_id, year, month, amount')
-          .eq('scenario_id', selectedScenarioId),
-        supabase
-          .from('accounts')
-          .select('id, account_number, name, account_configs!inner(section, display_order, is_budgetable)')
-          .eq('company_id', selectedScenario.company_id)
-          .eq('account_configs.is_budgetable', true)
-          .order('account_number'),
+      const [entries, accountRows, { data: costCenterRows }, { data: sectionData }] = await Promise.all([
+        // Whole scenario across every KS — must page past the 1000-row cap
+        fetchAllRows<{ account_id: number; cost_center_id: number; year: number; month: number; amount: number }>(
+          (from, to) =>
+            supabase
+              .from('budget_entries')
+              .select('account_id, cost_center_id, year, month, amount')
+              .eq('scenario_id', selectedScenarioId)
+              .order('cost_center_id')
+              .order('account_id')
+              .order('year')
+              .order('month')
+              .range(from, to),
+        ),
+        fetchAllRows<any>((from, to) =>
+          supabase
+            .from('accounts')
+            .select('id, account_number, name, account_configs!inner(section, display_order, is_budgetable)')
+            .eq('company_id', selectedScenario.company_id)
+            .eq('account_configs.is_budgetable', true)
+            .order('account_number')
+            .range(from, to),
+        ),
         supabase
           .from('cost_centers')
           .select('id, code, name')

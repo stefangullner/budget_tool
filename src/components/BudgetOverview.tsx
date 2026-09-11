@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Lock, ChevronRight, Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAllRows } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { AccountRow } from '@/hooks/useBudget'
 import type { CostCenter, Scenario, ScenarioLock } from '@/types'
@@ -33,20 +33,27 @@ export default function BudgetOverview({ scenario, accounts, costCenters, locks,
   useEffect(() => {
     if (!scenario) return
     setLoading(true)
-    supabase
-      .from('budget_entries')
-      .select('account_id, cost_center_id, amount')
-      .eq('scenario_id', scenario.id)
-      .then(({ data }) => {
-        // Sum all months per (costCenter, account) pair
-        const map = new Map<string, number>()
-        for (const row of data ?? []) {
-          const k = entryKey(row.cost_center_id, row.account_id)
-          map.set(k, (map.get(k) ?? 0) + (row.amount as number))
-        }
-        setAllEntries(map)
-        setLoading(false)
-      })
+    // Every KS × account × month for the scenario — far past the 1000-row cap
+    fetchAllRows<{ account_id: number; cost_center_id: number; amount: number }>((from, to) =>
+      supabase
+        .from('budget_entries')
+        .select('account_id, cost_center_id, amount')
+        .eq('scenario_id', scenario.id)
+        .order('cost_center_id')
+        .order('account_id')
+        .order('year')
+        .order('month')
+        .range(from, to),
+    ).then((data) => {
+      // Sum all months per (costCenter, account) pair
+      const map = new Map<string, number>()
+      for (const row of data) {
+        const k = entryKey(row.cost_center_id, row.account_id)
+        map.set(k, (map.get(k) ?? 0) + row.amount)
+      }
+      setAllEntries(map)
+      setLoading(false)
+    })
   }, [scenario.id])
 
   // Build section → account list lookup

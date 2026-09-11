@@ -4,7 +4,7 @@ import {
   Pencil, Check, X, Trash2, Plus, Lock
 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAllRows } from '@/lib/supabase'
 import { useAdminScenarios, type LockDetail } from '@/hooks/useAdminScenarios'
 import NewScenarioDialog from '@/components/NewScenarioDialog'
 import { cn } from '@/lib/utils'
@@ -85,11 +85,21 @@ export default function ScenariosAdminPage() {
   ) {
     const targets = companyIds && companyIds.length > 0 ? companyIds : [selectedCompanyId!]
 
-    // Fetch source entries once if copying
+    // Fetch source entries once if copying — a full scenario runs to tens of
+    // thousands of rows, so page past the 1000-row cap
     let sourceEntries: Record<string, unknown>[] = []
     if (copyFromId) {
-      const { data } = await supabase.from('budget_entries').select('*').eq('scenario_id', copyFromId)
-      sourceEntries = data ?? []
+      sourceEntries = await fetchAllRows<Record<string, unknown>>((from, to) =>
+        supabase
+          .from('budget_entries')
+          .select('*')
+          .eq('scenario_id', copyFromId)
+          .order('cost_center_id')
+          .order('account_id')
+          .order('year')
+          .order('month')
+          .range(from, to),
+      )
     }
 
     await Promise.all(targets.map(async (companyId) => {
@@ -105,13 +115,19 @@ export default function ScenariosAdminPage() {
         .single()
 
       if (data && sourceEntries.length > 0) {
-        await supabase.from('budget_entries').insert(
-          sourceEntries.map((e) => ({
-            scenario_id: data.id, account_id: e.account_id,
-            cost_center_id: e.cost_center_id, year: e.year,
-            month: e.month, amount: e.amount, updated_by: userId,
-          }))
-        )
+        const toInsert = sourceEntries.map((e) => ({
+          scenario_id: data.id, account_id: e.account_id,
+          cost_center_id: e.cost_center_id, year: e.year,
+          month: e.month, amount: e.amount,
+          // Must carry over — without it every IC row collapses onto the same
+          // (scenario, account, ks, year, month, null) key and the insert fails
+          counterpart_company_id: e.counterpart_company_id ?? null,
+          updated_by: userId,
+        }))
+        const BATCH = 500
+        for (let i = 0; i < toInsert.length; i += BATCH) {
+          await supabase.from('budget_entries').insert(toInsert.slice(i, i + BATCH))
+        }
       }
     }))
 

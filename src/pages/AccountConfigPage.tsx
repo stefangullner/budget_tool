@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import { Check, X, Clock, ArrowLeftRight, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAllRows } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Company, Account, AccountConfig } from '@/types'
 
@@ -47,21 +47,29 @@ export default function AccountConfigPage() {
 
   const loadAccounts = useCallback(async (companyId: number) => {
     setLoading(true)
-    const [{ data: accountData }, { data: sectionData }] = await Promise.all([
-      supabase
-        .from('accounts')
-        .select('*, config:account_configs(*)')
-        .eq('company_id', companyId)
-        .order('account_number'),
-      supabase
-        .from('account_configs')
-        .select('section, accounts!inner(company_id)')
-        .eq('accounts.company_id', companyId)
-        .not('section', 'is', null),
+    // A single company can hold well over PostgREST's 1000-row cap — page both queries
+    const [accountData, sectionData] = await Promise.all([
+      fetchAllRows<AccountRow>((from, to) =>
+        supabase
+          .from('accounts')
+          .select('*, config:account_configs(*)')
+          .eq('company_id', companyId)
+          .order('account_number')
+          .range(from, to),
+      ),
+      fetchAllRows<{ section: string }>((from, to) =>
+        supabase
+          .from('account_configs')
+          .select('section, accounts!inner(company_id)')
+          .eq('accounts.company_id', companyId)
+          .not('section', 'is', null)
+          .order('account_id')
+          .range(from, to),
+      ),
     ])
-    setAccounts((accountData ?? []) as AccountRow[])
+    setAccounts(accountData)
     const uniqueSections = [...new Set(
-      (sectionData ?? []).map((r: any) => r.section as string).filter(Boolean)
+      sectionData.map((r) => r.section).filter(Boolean)
     )].sort()
     setSections(uniqueSections)
     setLoading(false)
