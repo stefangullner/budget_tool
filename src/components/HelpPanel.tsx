@@ -153,6 +153,15 @@ export default function HelpPanel() {
                 <li>Stäng av kolumnerna med samma knapp om du vill ha en smalare tabell.</li>
               </ul>
 
+              <h4 className="font-medium text-gray-800 mb-1.5">Konton med utfall men utan budget</h4>
+              <p className="text-gray-600 mb-4">
+                Konton som inte är aktiverade för budgetering dyker ändå upp i matrisen om de har ett utfall skilt
+                från noll. De märks med <strong>Utfall</strong> och är gråa och skrivskyddade — du ser resultatet
+                men kan inte lägga budget på dem. Vill du kunna budgetera ett sådant konto, aktivera det under
+                <strong> Konton</strong>. Raderna räknas med i sektions- och totalsummor, men inte i
+                framstegsmätaren, som bara följer de budgeterbara kontona.
+              </p>
+
               <h4 className="font-medium text-gray-800 mb-1.5">Kompakt läge</h4>
               <p className="text-gray-600 mb-4">
                 Knappen <strong>Kompakt</strong> krymper text, radhöjd och kolumnbredder så att fler månader ryms på

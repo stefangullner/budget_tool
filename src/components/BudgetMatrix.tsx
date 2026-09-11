@@ -15,7 +15,10 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'S
 
 interface Props {
   scenario: Scenario
+  /** Accounts the user may budget on. */
   accounts: AccountRow[]
+  /** Not budgetable, but have actuals — rendered read-only. */
+  actualOnlyAccounts?: AccountRow[]
   entries: Map<string, number>
   icEntries: Map<string, number>
   actuals: Map<string, number>
@@ -88,6 +91,7 @@ function ActualCell({ value, pad, className }: { value: number; pad: string; cla
 export default function BudgetMatrix({
   scenario,
   accounts,
+  actualOnlyAccounts = [],
   entries,
   icEntries,
   actuals,
@@ -119,6 +123,20 @@ export default function BudgetMatrix({
   function cellKey(accountId: number, year: number, month: number) {
     return periodKey(year, month) + ':' + accountId
   }
+
+  /** Only accounts flagged budgetable accept input — the rest are shown for their actuals. */
+  function isEditable(account: AccountRow) {
+    return account.config?.is_budgetable === true
+  }
+
+  /** Budgetable accounts plus the actual-only ones, in account-number order. */
+  const allRows = useMemo(
+    () =>
+      [...accounts, ...actualOnlyAccounts].sort((a, b) =>
+        a.account_number.localeCompare(b.account_number, 'sv'),
+      ),
+    [accounts, actualOnlyAccounts],
+  )
 
   // Derive counterparts present in icEntries per account
   const icCounterpartsFromEntries = useMemo(() => {
@@ -162,7 +180,7 @@ export default function BudgetMatrix({
   }
 
   function getValue(accountId: number, year: number, month: number): number {
-    const account = accounts.find((a) => a.id === accountId)
+    const account = allRows.find((a) => a.id === accountId)
     if (account?.config?.is_intercompany) {
       return getCounterparts(accountId).reduce((sum, cpId) => {
         return sum + (icEntries.get(periodKey(year, month) + ':' + accountId + ':' + cpId) ?? 0)
@@ -184,15 +202,15 @@ export default function BudgetMatrix({
   }
 
   function getPeriodTotal(year: number, month: number): number {
-    return accounts.reduce((sum, a) => sum + getValue(a.id, year, month), 0)
+    return allRows.reduce((sum, a) => sum + getValue(a.id, year, month), 0)
   }
 
   function getGrandTotal(): number {
-    return accounts.reduce((sum, a) => sum + getRowTotal(a.id), 0)
+    return allRows.reduce((sum, a) => sum + getRowTotal(a.id), 0)
   }
 
   const sectionOrder: (string | null)[] = sortSections(
-    [...new Set(accounts.map((a) => a.config?.section ?? null).filter((s): s is string => s !== null))],
+    [...new Set(allRows.map((a) => a.config?.section ?? null).filter((s): s is string => s !== null))],
     sectionOrderMap,
   )
   sectionOrder.push(null)
@@ -202,7 +220,7 @@ export default function BudgetMatrix({
       const label = section ?? '— Ingen sektion'
       return {
         section: label,
-        rows: accounts.filter((a) => (a.config?.section ?? null) === section),
+        rows: allRows.filter((a) => (a.config?.section ?? null) === section),
         canView: sectionPerms ? sectionPerms.canView(label) : true,
         canEdit: sectionPerms ? sectionPerms.canEdit(label) : true,
       }
@@ -329,7 +347,7 @@ export default function BudgetMatrix({
         nextPeriodIdx = Math.max(periodIndex - 1, 0)
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        nextAccountIdx = Math.min(accountIndex + 1, accounts.length - 1)
+        nextAccountIdx = Math.min(accountIndex + 1, allRows.length - 1)
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         nextAccountIdx = Math.max(accountIndex - 1, 0)
@@ -337,15 +355,22 @@ export default function BudgetMatrix({
         return
       }
 
-      const nextAccount = accounts[nextAccountIdx]
+      // Read-only rows have no input to focus — keep moving in the same direction
+      const step = nextAccountIdx > accountIndex ? 1 : nextAccountIdx < accountIndex ? -1 : 0
+      while (step !== 0 && allRows[nextAccountIdx] && !isEditable(allRows[nextAccountIdx])) {
+        nextAccountIdx += step
+      }
+
+      const nextAccount = allRows[nextAccountIdx]
       const nextPeriod = periods[nextPeriodIdx]
       if (!nextAccount || !nextPeriod) return
+      if (!isEditable(nextAccount)) return
       if (isPastPeriod(nextPeriod.year, nextPeriod.month)) return
 
       const key = cellKey(nextAccount.id, nextPeriod.year, nextPeriod.month)
       inputRefs.current.get(key)?.focus()
     },
-    [accounts, periods],
+    [allRows, periods],
   )
 
   const filledAccounts = accounts.filter((a) =>
@@ -571,7 +596,8 @@ export default function BudgetMatrix({
 
                   {!isCollapsed && rows.map((account) => {
                     const isIC = account.config?.is_intercompany === true
-                    const globalRowIdx = accounts.indexOf(account)
+                    const readOnly = !isEditable(account)
+                    const globalRowIdx = allRows.indexOf(account)
                     const rowTotal = getRowTotal(account.id)
                     const hasComment = comments.has(account.id)
                     const isCommentOpen = openCommentId === account.id
@@ -605,12 +631,20 @@ export default function BudgetMatrix({
                                   </button>
                                 )}
                                 <span className="font-mono text-gray-400 mr-1">{account.account_number}</span>
-                                <span className="text-gray-700">{account.name}</span>
+                                <span className={readOnly ? 'text-gray-500' : 'text-gray-700'}>{account.name}</span>
                                 {isIC && (
                                   <span className="ml-1 px-1 py-0.5 rounded text-blue-500 bg-blue-50 font-medium shrink-0">IC</span>
                                 )}
+                                {readOnly && (
+                                  <span
+                                    title="Kontot är inte aktiverat för budgetering — visas för sitt utfall"
+                                    className="ml-1 px-1 py-0.5 rounded text-slate-500 bg-slate-100 font-medium shrink-0"
+                                  >
+                                    Utfall
+                                  </span>
+                                )}
                               </div>
-                              {!isIC && (
+                              {!isIC && !readOnly && (
                                 <div className="flex items-center gap-0.5 shrink-0">
                                   <button
                                     onClick={() => {
@@ -694,11 +728,11 @@ export default function BudgetMatrix({
                               <Fragment key={`${year}-${month}`}>
                               {prevCell}
                               <td className="px-1 py-0.5">
-                                {isPast || effectivelyLocked ? (
+                                {isPast || effectivelyLocked || readOnly ? (
                                   <div className={cn(
                                     'text-right rounded',
                                     d.inputPad,
-                                    isPast ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
+                                    isPast || readOnly ? 'text-gray-400 bg-gray-50' : 'text-gray-700',
                                   )}>
                                     {fmt(value)}
                                   </div>
@@ -938,7 +972,7 @@ export default function BudgetMatrix({
                   {showActuals && (
                     <ActualCell
                       pad={d.cellPad}
-                      value={getPrevPeriodTotal(accounts, year, month)}
+                      value={getPrevPeriodTotal(allRows, year, month)}
                       className="py-2 font-semibold text-gray-500 bg-gray-100"
                     />
                   )}
@@ -950,7 +984,7 @@ export default function BudgetMatrix({
               {showActuals && (
                 <ActualCell
                   pad={d.cellPad}
-                  value={accounts.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0)}
+                  value={allRows.reduce((sum, a) => sum + getPrevRowTotal(a.id), 0)}
                   className="py-2 font-semibold text-gray-500 bg-gray-200 border-l border-gray-400"
                 />
               )}

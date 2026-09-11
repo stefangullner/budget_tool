@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Scenario, Account, AccountConfig, CostCenter, BudgetEntry, ScenarioLock } from '@/types'
 
@@ -25,11 +25,14 @@ export function scenarioPeriods(s: Scenario): { year: number; month: number }[] 
 export function useBudget(companyId: number | null, scenarioId: number | null, costCenterId: number | null) {
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
-  const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [allAccounts, setAllAccounts] = useState<AccountRow[]>([])
   const [entries, setEntries] = useState<Map<string, number>>(new Map())
   const [icEntries, setIcEntries] = useState<Map<string, number>>(new Map())
   const [actuals, setActuals] = useState<Map<string, number>>(new Map())
   const [prevActuals, setPrevActuals] = useState<Map<string, number>>(new Map())
+  // Account ids that have a non-zero actual for the selected scenario + cost center
+  const [actualIds, setActualIds] = useState<Set<number>>(new Set())
+  const [prevActualIds, setPrevActualIds] = useState<Set<number>>(new Set())
   const [locks, setLocks] = useState<ScenarioLock[]>([])
   const [saving, setSaving] = useState<Set<string>>(new Set())
   const [icSaving, setIcSaving] = useState<Set<string>>(new Set())
@@ -60,18 +63,40 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
       .then(({ data }) => setCostCenters((data ?? []) as CostCenter[]))
   }, [companyId])
 
-  // Load accounts (budgetable only) for company — filter at DB level using inner join
+  // Load every account for the company. Budgetable ones are editable; the rest are still
+  // needed so accounts that only have actuals can be shown read-only in the matrix.
   useEffect(() => {
     if (!companyId) return
-    setAccounts([])
+    setAllAccounts([])
+    setActualIds(new Set())
+    setPrevActualIds(new Set())
     supabase
       .from('accounts')
-      .select('*, config:account_configs!inner(*)')
+      .select('*, config:account_configs(*)')
       .eq('company_id', companyId)
-      .eq('account_configs.is_budgetable', true)
       .order('account_number')
-      .then(({ data }) => setAccounts((data ?? []) as AccountRow[]))
+      .then(({ data }) => setAllAccounts((data ?? []) as AccountRow[]))
   }, [companyId])
+
+  /** Accounts the user may enter budget for. */
+  const accounts = useMemo(
+    () => allAccounts.filter((a) => a.config?.is_budgetable === true),
+    [allAccounts],
+  )
+
+  /**
+   * Accounts that are not enabled for budgeting but have a non-zero actual in the
+   * scenario window — shown read-only so the matrix reflects the real result.
+   */
+  const actualOnlyAccounts = useMemo(
+    () =>
+      allAccounts.filter(
+        (a) =>
+          a.config?.is_budgetable !== true &&
+          (actualIds.has(a.id) || prevActualIds.has(a.id)),
+      ),
+    [allAccounts, actualIds, prevActualIds],
+  )
 
   const loadEntries = useCallback(async (scenarioId: number, costCenterId: number) => {
     setLoading(true)
@@ -109,13 +134,16 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
       .lte('year', scenario.end_year)
 
     const map = new Map<string, number>()
+    const ids = new Set<number>()
     for (const row of data ?? []) {
       const isPast = row.year < currentYear || (row.year === currentYear && row.month <= currentMonth)
       if (isPast) {
         map.set(periodKey(row.year, row.month) + ':' + row.account_id, row.amount)
+        if (row.amount !== 0) ids.add(row.account_id)
       }
     }
     setActuals(map)
+    setActualIds(ids)
   }, [])
 
   const loadPrevActuals = useCallback(async (companyId: number, costCenterId: number, scenario: Scenario) => {
@@ -128,10 +156,13 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
       .lte('year', scenario.end_year - 1)
 
     const map = new Map<string, number>()
+    const ids = new Set<number>()
     for (const row of data ?? []) {
       map.set(periodKey(row.year + 1, row.month) + ':' + row.account_id, row.amount)
+      if (row.amount !== 0) ids.add(row.account_id)
     }
     setPrevActuals(map)
+    setPrevActualIds(ids)
   }, [])
 
   const loadLocks = useCallback(async (scenarioId: number) => {
@@ -322,6 +353,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     scenarios,
     costCenters,
     accounts,
+    actualOnlyAccounts,
     entries,
     icEntries,
     actuals,

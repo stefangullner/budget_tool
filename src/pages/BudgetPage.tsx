@@ -38,6 +38,7 @@ export default function BudgetPage() {
     scenarios,
     costCenters,
     accounts,
+    actualOnlyAccounts,
     entries,
     icEntries,
     actuals,
@@ -229,7 +230,7 @@ export default function BudgetPage() {
             ? 'Skapa ett scenario för att börja budgetera.'
             : 'Välj ett scenario och ett kostnadsställe.'}
         </div>
-      ) : accounts.length === 0 ? (
+      ) : accounts.length === 0 && actualOnlyAccounts.length === 0 ? (
         <div className="text-center py-20 text-gray-400 text-sm">
           Inga budgeterbara konton konfigurerade.{' '}
           <a href="/accounts" className="text-brand-600 underline">Gå till Kontokonfiguration</a>.
@@ -242,6 +243,7 @@ export default function BudgetPage() {
         <BudgetMatrix
           scenario={selectedScenario}
           accounts={accounts}
+          actualOnlyAccounts={actualOnlyAccounts}
           sectionPerms={sectionPerms}
           entries={entries}
           icEntries={icEntries}
