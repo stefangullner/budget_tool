@@ -18,7 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
  * stable .order() so pages don't overlap or skip rows.
  */
 export async function fetchAllRows<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  page: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>,
   pageSize = 1000,
 ): Promise<T[]> {
   const all: T[] = []
@@ -28,7 +28,7 @@ export async function fetchAllRows<T>(
       console.error('fetchAllRows failed after %d rows:', all.length, error)
       break
     }
-    const batch = data ?? []
+    const batch = (data ?? []) as T[]
     all.push(...batch)
     if (batch.length < pageSize) break
   }

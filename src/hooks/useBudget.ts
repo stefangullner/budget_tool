@@ -5,6 +5,7 @@ import type { Scenario, Account, AccountConfig, CostCenter, BudgetEntry, Scenari
 export type AccountRow = Account & { config: AccountConfig | null }
 
 type ActualRow = { account_id: number; year: number; month: number; amount: number }
+type EntryRow = ActualRow & { counterpart_company_id: number | null }
 
 export type PeriodKey = `${number}-${number}` // "2026-1"
 
@@ -105,7 +106,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   const loadEntries = useCallback(async (scenarioId: number, costCenterId: number) => {
     setLoading(true)
     // One KS can hold hundreds of accounts × 12 months — well past the 1000-row cap
-    const data = await fetchAllRows<BudgetEntry>((from, to) =>
+    const data = await fetchAllRows<EntryRow>((from, to) =>
       supabase
         .from('budget_entries')
         .select('account_id, year, month, amount, counterpart_company_id')
