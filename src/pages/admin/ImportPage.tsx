@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
-import { Upload, Download, CheckCircle2, XCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react'
+import { Upload, Download, CheckCircle2, XCircle, AlertTriangle, FileSpreadsheet, Loader2 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase, fetchAllRows } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -32,21 +32,25 @@ export default function ImportPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
-  const [rows, setRows] = useState<ParsedRow[]>([])
+  const [rawRows, setRawRows] = useState<string[][]>([])
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [refDataLoading, setRefDataLoading] = useState(true)
 
   useEffect(() => {
-    supabase.from('companies').select('*').then(({ data }) => setCompanies(data ?? []))
-    // Both tables run well past PostgREST's 1000-row cap across all companies
-    fetchAllRows<Account>((from, to) =>
-      supabase.from('accounts').select('id, company_id, account_number, name').order('id').range(from, to),
-    ).then(setAccounts)
-    fetchAllRows<CostCenter>((from, to) =>
-      supabase.from('cost_centers').select('id, company_id, code, name, is_active').order('id').range(from, to),
-    ).then(setCostCenters)
+    // Accounts run past PostgREST's 1000-row cap across all companies, so this
+    // takes several round-trips — validation must wait for it (see `rows` below)
+    Promise.all([
+      supabase.from('companies').select('*').then(({ data }) => setCompanies(data ?? [])),
+      fetchAllRows<Account>((from, to) =>
+        supabase.from('accounts').select('id, company_id, account_number, name').order('id').range(from, to),
+      ).then(setAccounts),
+      fetchAllRows<CostCenter>((from, to) =>
+        supabase.from('cost_centers').select('id, company_id, code, name, is_active').order('id').range(from, to),
+      ).then(setCostCenters),
+    ]).finally(() => setRefDataLoading(false))
   }, [])
 
   function downloadTemplate() {
@@ -61,6 +65,11 @@ export default function ImportPage() {
     XLSX.writeFile(wb, 'utfall_mall.xlsx')
   }
 
+  /**
+   * Only reads the cells. Validation happens in `rows` so it re-runs when the
+   * lookup tables finish loading — otherwise a file picked during that window
+   * validates against empty maps and every row reports a missing account.
+   */
   function parseFile(file: File) {
     setResult(null)
     setFileName(file.name)
@@ -70,9 +79,7 @@ export default function ImportPage() {
         const wb = XLSX.read(e.target?.result, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
         const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' })
-        const dataRows = raw.slice(1).filter((r: string[]) => r.some((c: string) => String(c).trim() !== ''))
-        const parsed = dataRows.map((r: string[], i: number) => parseRow(r, i + 2))
-        setRows(parsed)
+        setRawRows(raw.slice(1).filter((r: string[]) => r.some((c: string) => String(c).trim() !== '')))
       } catch {
         setResult({ ok: false, message: 'Kunde inte läsa filen. Kontrollera att det är en giltig .xlsx.' })
       }
@@ -141,6 +148,13 @@ export default function ImportPage() {
     }
   }
 
+  // Derived, not stored — re-validates automatically once the lookup tables land
+  const rows = useMemo(
+    () => (refDataLoading ? [] : rawRows.map((r, i) => parseRow(r, i + 2))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawRows, refDataLoading, companyByKey, accountByKey, costCenterByKey],
+  )
+
   const validRows = rows.filter((r) => r.errors.length === 0)
   const errorRows = rows.filter((r) => r.errors.length > 0)
 
@@ -193,7 +207,7 @@ export default function ImportPage() {
     }
 
     setResult({ ok: true, message: `${imported} rader importerade (${errorRows.length} rader hoppades över pga fel).` })
-    setRows([])
+    setRawRows([])
     setFileName(null)
     setProgress(null)
     setImporting(false)
@@ -251,6 +265,18 @@ export default function ImportPage() {
               <FileSpreadsheet size={13} className="text-green-500" /> {fileName}
             </p>
           )}
+          {refDataLoading ? (
+            <p className="mt-2 text-xs text-gray-400 flex items-center gap-1.5">
+              <Loader2 size={13} className="animate-spin" />
+              Laddar konton och kostnadsställen — validering startar när de är klara
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-gray-400">
+              Validerar mot {accounts.length.toLocaleString('sv-SE')} konton ·{' '}
+              {costCenters.length.toLocaleString('sv-SE')} kostnadsställen ·{' '}
+              {companies.length} bolag
+            </p>
+          )}
         </div>
       </div>
 
@@ -262,6 +288,14 @@ export default function ImportPage() {
         )}>
           {result.ok ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <XCircle size={15} className="mt-0.5 shrink-0" />}
           {result.message}
+        </div>
+      )}
+
+      {/* File read, but validation is waiting on the lookup tables */}
+      {rawRows.length > 0 && refDataLoading && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm mb-5 border border-gray-200 bg-gray-50 text-gray-500">
+          <Loader2 size={15} className="animate-spin shrink-0" />
+          {rawRows.length.toLocaleString('sv-SE')} rader inlästa — väntar på konto- och KS-listan innan de valideras.
         </div>
       )}
 
