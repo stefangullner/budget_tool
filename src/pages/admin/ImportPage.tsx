@@ -27,6 +27,11 @@ interface ParsedRow {
 
 const TEMPLATE_HEADERS = ['Bolag', 'Kontonummer', 'KS-kod', 'År', 'Månad', 'Belopp']
 
+/** Unique key of the actuals table — two rows sharing it cannot both be imported. */
+function actualKey(r: ParsedRow) {
+  return `${r.company!.id}:${r.account!.id}:${r.costCenter!.id}:${r.year}:${r.month}`
+}
+
 export default function ImportPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [companies, setCompanies] = useState<Company[]>([])
@@ -149,14 +154,27 @@ export default function ImportPage() {
   }
 
   // Derived, not stored — re-validates automatically once the lookup tables land
-  const rows = useMemo(
-    () => (refDataLoading ? [] : rawRows.map((r, i) => parseRow(r, i + 2))),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rawRows, refDataLoading, companyByKey, accountByKey, costCenterByKey],
-  )
+  const rows = useMemo(() => {
+    if (refDataLoading) return []
+    const parsed = rawRows.map((r, i) => parseRow(r, i + 2))
 
-  const validRows = rows.filter((r) => r.errors.length === 0)
-  const errorRows = rows.filter((r) => r.errors.length > 0)
+    // Two rows with the same account, cost centre and period cannot both be
+    // imported — Postgres rejects the whole batch. Flag them so the file gets
+    // fixed rather than silently merging amounts behind the user's back.
+    const seen = new Map<string, number>()
+    for (const r of parsed) {
+      if (r.errors.length > 0 || !r.company || !r.account || !r.costCenter) continue
+      const key = actualKey(r)
+      const first = seen.get(key)
+      if (first === undefined) seen.set(key, r.rowNum)
+      else r.errors.push('Dubblett — samma konto, KS och period som en tidigare rad')
+    }
+    return parsed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawRows, refDataLoading, companyByKey, accountByKey, costCenterByKey])
+
+  const validRows = useMemo(() => rows.filter((r) => r.errors.length === 0), [rows])
+  const errorRows = useMemo(() => rows.filter((r) => r.errors.length > 0), [rows])
 
   // Rendering every row of a large file locks up the browser. Show the problem
   // rows first — those are the ones worth acting on.
@@ -206,7 +224,9 @@ export default function ImportPage() {
       setProgress({ done: imported, total: toUpsert.length })
     }
 
-    setResult({ ok: true, message: `${imported} rader importerade (${errorRows.length} rader hoppades över pga fel).` })
+    const parts = [`${imported.toLocaleString('sv-SE')} rader importerade`]
+    if (errorRows.length > 0) parts.push(`${errorRows.length.toLocaleString('sv-SE')} rader hoppades över pga fel`)
+    setResult({ ok: true, message: parts.join(' · ') + '.' })
     setRawRows([])
     setFileName(null)
     setProgress(null)
