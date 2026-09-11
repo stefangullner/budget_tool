@@ -54,6 +54,11 @@ export interface Scenario {
   end_month: number
   is_approved: boolean
   deadline_date: string | null
+  /**
+   * Which year each period compares against: { "<year>-<month>": <source year> }.
+   * A missing key (or null column) means the period year minus one.
+   */
+  comparison_periods: Record<string, number> | null
   created_by: string
   created_at: string
 }

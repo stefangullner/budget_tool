@@ -151,6 +151,12 @@ export default function HelpPanel() {
                   {' '}<strong>Admin → Import</strong> eller vänta på synken från Fabric.
                 </li>
                 <li>Stäng av kolumnerna med samma knapp om du vill ha en smalare tabell.</li>
+                <li>
+                  Vilket år varje månad hämtar utfall ifrån styrs per scenario. Standard är året innan,
+                  men saknas utfall där — t.ex. för månader som ännu inte inträffat — kan du peka ut ett
+                  äldre år per månad under <strong>Admin → Scenarier</strong>. Rubriken över varje kolumn
+                  visar alltid vilket år siffran faktiskt kommer från.
+                </li>
               </ul>
 
               <h4 className="font-medium text-gray-800 mb-1.5">Konton med utfall men utan budget</h4>

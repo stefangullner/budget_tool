@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { X, TrendingUp, Copy, FileText } from 'lucide-react'
+import { X, TrendingUp, Copy, FileText, CalendarRange } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import ComparisonYearPicker, { type ComparisonPeriods } from '@/components/ComparisonYearPicker'
 import type { Company, Scenario } from '@/types'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
@@ -18,6 +19,7 @@ interface Props {
     endMonth: number,
     copyFromId?: number,
     companyIds?: number[],   // only used in admin mode
+    comparisonPeriods?: ComparisonPeriods,
   ) => Promise<void>
 }
 
@@ -54,6 +56,10 @@ export default function NewScenarioDialog({
 
   // Copy state
   const [copyFromId, setCopyFromId] = useState<number | ''>('')
+
+  // Which year each month compares against. Empty = every period uses year - 1.
+  const [comparisonPeriods, setComparisonPeriods] = useState<ComparisonPeriods>({})
+  const [showComparison, setShowComparison] = useState(false)
 
   // Company selection (admin mode)
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(
@@ -128,6 +134,7 @@ export default function NewScenarioDialog({
       name.trim(), startYear, startMonth, endYear, endMonth,
       copyFromId || undefined,
       companies ? [...selectedCompanyIds] : undefined,
+      Object.keys(comparisonPeriods).length > 0 ? comparisonPeriods : undefined,
     )
     setSaving(false)
     onClose()
@@ -281,6 +288,40 @@ export default function NewScenarioDialog({
                         : 'Tomt — fyll i manuellt i budgetmatrisen.'}
                     </p>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Comparison years ── */}
+          {totalMonths > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowComparison((v) => !v)}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-brand-700 transition-colors"
+              >
+                <CalendarRange size={13} className="text-gray-400" />
+                Jämförelseår för utfallskolumnen
+                <span className="font-normal text-gray-400">
+                  {Object.keys(comparisonPeriods).length > 0 ? '· anpassat' : '· året innan'}
+                </span>
+              </button>
+              {showComparison && (
+                <div className="mt-2.5 rounded-lg border border-gray-200 p-3">
+                  <p className="text-xs text-gray-400 mb-2.5">
+                    Varje månad i budgeten visas bredvid utfallet för samma månad ett tidigare år.
+                    Saknas utfall för året innan — t.ex. för månader som ännu inte inträffat — kan du
+                    peka ut ett äldre år per månad.
+                  </p>
+                  <ComparisonYearPicker
+                    startYear={startYear}
+                    startMonth={startMonth}
+                    endYear={endYear}
+                    endMonth={endMonth}
+                    value={comparisonPeriods}
+                    onChange={setComparisonPeriods}
+                  />
                 </div>
               )}
             </div>

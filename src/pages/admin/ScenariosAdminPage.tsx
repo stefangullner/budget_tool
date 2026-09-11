@@ -7,6 +7,7 @@ import HelpButton from '@/components/HelpButton'
 import { supabase, fetchAllRows } from '@/lib/supabase'
 import { useAdminScenarios, type LockDetail } from '@/hooks/useAdminScenarios'
 import NewScenarioDialog from '@/components/NewScenarioDialog'
+import ComparisonYearPicker, { type ComparisonPeriods } from '@/components/ComparisonYearPicker'
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
 
@@ -49,6 +50,9 @@ export default function ScenariosAdminPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+  // Optimistic copies so the picker stays responsive while the write is in flight
+  const [comparisonDrafts, setComparisonDrafts] = useState<Map<number, ComparisonPeriods>>(new Map())
+  const [savingComparisonId, setSavingComparisonId] = useState<number | null>(null)
 
   const { scenarios, loading, refetch, renameScenario, toggleApprove, deleteScenario, loadLockDetails } =
     useAdminScenarios(selectedCompanyId)
@@ -69,6 +73,17 @@ export default function ScenariosAdminPage() {
     }
   }
 
+  async function saveComparisonPeriods(scenarioId: number, next: ComparisonPeriods) {
+    setComparisonDrafts((prev) => new Map(prev).set(scenarioId, next))
+    setSavingComparisonId(scenarioId)
+    await supabase
+      .from('scenarios')
+      .update({ comparison_periods: Object.keys(next).length > 0 ? next : null })
+      .eq('id', scenarioId)
+    setSavingComparisonId(null)
+    await refetch()
+  }
+
   function startEdit(id: number, name: string) {
     setEditingId(id)
     setEditName(name)
@@ -82,6 +97,7 @@ export default function ScenariosAdminPage() {
   async function handleCreateScenario(
     name: string, startYear: number, startMonth: number,
     endYear: number, endMonth: number, copyFromId?: number, companyIds?: number[],
+    comparisonPeriods?: ComparisonPeriods,
   ) {
     const targets = companyIds && companyIds.length > 0 ? companyIds : [selectedCompanyId!]
 
@@ -109,6 +125,7 @@ export default function ScenariosAdminPage() {
           company_id: companyId,
           name, start_year: startYear, start_month: startMonth,
           end_year: endYear, end_month: endMonth,
+          comparison_periods: comparisonPeriods ?? null,
           is_approved: false, created_by: userId,
         })
         .select()
@@ -280,9 +297,28 @@ export default function ScenariosAdminPage() {
                 </div>
               </div>
 
-              {/* Expanded KS lock details */}
+              {/* Expanded details */}
               {expandedId === s.id && (
-                <div className="border-t border-gray-100 px-5 py-4 bg-gray-50">
+                <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 space-y-5">
+                  {/* Comparison years */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Jämförelseår för utfallskolumnen</p>
+                    <p className="text-xs text-gray-400 mb-2.5">
+                      Vilket år varje månad hämtar sitt utfall ifrån. Ändringen slår igenom direkt i budgetvyn.
+                    </p>
+                    <ComparisonYearPicker
+                      startYear={s.start_year}
+                      startMonth={s.start_month}
+                      endYear={s.end_year}
+                      endMonth={s.end_month}
+                      value={comparisonDrafts.get(s.id) ?? s.comparison_periods ?? {}}
+                      onChange={(next) => saveComparisonPeriods(s.id, next)}
+                    />
+                    {savingComparisonId === s.id && (
+                      <p className="text-xs text-gray-400 mt-2">Sparar…</p>
+                    )}
+                  </div>
+
                   {(() => {
                     const details = lockDetails.get(s.id)
                     if (!details) return (

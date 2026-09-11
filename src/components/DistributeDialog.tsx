@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { X, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
-import type { AccountRow } from '@/hooks/useBudget'
+import { scenarioPeriods, type AccountRow } from '@/hooks/useBudget'
+import { comparisonYearFor } from '@/components/ComparisonYearPicker'
 import type { Scenario } from '@/types'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
@@ -57,23 +58,32 @@ export default function DistributeDialog({
 
   useEffect(() => {
     setLoadingPrev(true)
-    const prevYear = scenario.start_year - 1
+    // Follow the scenario's per-month comparison year so the weighting matches
+    // the "Utfall" column in the matrix
+    const sourceByMonth = new Map<number, number>()
+    for (const { year, month } of scenarioPeriods(scenario)) {
+      if (!sourceByMonth.has(month)) {
+        sourceByMonth.set(month, comparisonYearFor(scenario.comparison_periods, year, month))
+      }
+    }
+    const years = [...new Set(sourceByMonth.values())]
     supabase
       .from('actuals')
-      .select('month, amount')
+      .select('year, month, amount')
       .eq('company_id', companyId)
       .eq('account_id', account.id)
       .eq('cost_center_id', costCenterId)
-      .eq('year', prevYear)
+      .in('year', years)
       .then(({ data }) => {
         const map = new Map<number, number>()
         for (const row of data ?? []) {
-          map.set(row.month as number, row.amount as number)
+          const month = row.month as number
+          if (sourceByMonth.get(month) === row.year) map.set(month, row.amount as number)
         }
         setPrevYearData(map)
         setLoadingPrev(false)
       })
-  }, [account.id, companyId, costCenterId, scenario.start_year])
+  }, [account.id, companyId, costCenterId, scenario])
 
   function computePreview(): { year: number; month: number; amount: number }[] {
     if (!hasFuturePeriods) return []

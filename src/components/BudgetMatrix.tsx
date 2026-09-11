@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
 import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
+import { comparisonYearFor } from '@/components/ComparisonYearPicker'
 import type { SectionPerms } from '@/hooks/useRoleSectionPermissions'
 import type { Scenario, ScenarioLock, Company } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
@@ -245,7 +246,17 @@ export default function BudgetMatrix({
   // Comparison year columns (actuals for the same month one year earlier)
   const colsPerPeriod = showActuals ? 2 : 1
   const totalCols = 1 + periods.length * colsPerPeriod + colsPerPeriod
-  const comparisonYear = scenario.start_year - 1
+
+  /** Source year per period — a scenario may mix years (see comparison_periods). */
+  function sourceYear(year: number, month: number) {
+    return comparisonYearFor(scenario.comparison_periods, year, month)
+  }
+
+  const sourceYears = [...new Set(periods.map((p) => sourceYear(p.year, p.month)))].sort()
+  const comparisonLabel =
+    sourceYears.length === 1
+      ? String(sourceYears[0])
+      : `${sourceYears[0]}–${sourceYears[sourceYears.length - 1]}`
 
   function getPrev(accountId: number, year: number, month: number): number {
     return prevActuals.get(periodKey(year, month) + ':' + accountId) ?? 0
@@ -433,7 +444,7 @@ export default function BudgetMatrix({
             )}
           >
             <Columns3 size={13} />
-            Utfall {comparisonYear}
+            Utfall {comparisonLabel}
           </button>
           <button
             onClick={() => setDeviationEnabled((v) => !v)}
@@ -507,7 +518,7 @@ export default function BudgetMatrix({
                 {periods.map(({ year, month }) => (
                   <Fragment key={`${year}-${month}`}>
                     <th className={cn('pb-2 text-right font-normal text-gray-400 border-l border-gray-200', d.cellPad, d.actualCol)}>
-                      {year - 1}
+                      {sourceYear(year, month)}
                     </th>
                     <th className={cn('pb-2 text-right font-medium text-gray-500', d.cellPad, d.budgetCol)}>
                       Budget
@@ -515,7 +526,7 @@ export default function BudgetMatrix({
                   </Fragment>
                 ))}
                 <th className={cn('pb-2 text-right font-normal text-gray-400 bg-gray-100 border-l border-gray-300', d.cellPad, d.actualCol)}>
-                  {comparisonYear}
+                  {comparisonLabel}
                 </th>
                 <th className={cn('pb-2 text-right font-medium text-gray-600 bg-gray-100', d.namePad, d.totalCol)}>Budget</th>
               </tr>

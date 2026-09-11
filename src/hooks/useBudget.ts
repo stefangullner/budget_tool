@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, fetchAllRows } from '@/lib/supabase'
+import { comparisonYearFor } from '@/components/ComparisonYearPicker'
 import type { Scenario, Account, AccountConfig, CostCenter, BudgetEntry, ScenarioLock } from '@/types'
 
 export type AccountRow = Account & { config: AccountConfig | null }
@@ -165,14 +166,31 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   }, [])
 
   const loadPrevActuals = useCallback(async (companyId: number, costCenterId: number, scenario: Scenario) => {
+    // Each period may draw its comparison from a different year, so build a
+    // source (year, month) → target period(s) index rather than assuming year-1.
+    const targetsBySource = new Map<string, PeriodKey[]>()
+    for (const { year, month } of scenarioPeriods(scenario)) {
+      const sourceYear = comparisonYearFor(scenario.comparison_periods, year, month)
+      const sourceKey = periodKey(sourceYear, month)
+      const targets = targetsBySource.get(sourceKey)
+      if (targets) targets.push(periodKey(year, month))
+      else targetsBySource.set(sourceKey, [periodKey(year, month)])
+    }
+    if (targetsBySource.size === 0) {
+      setPrevActuals(new Map())
+      setPrevActualIds(new Set())
+      return
+    }
+
+    const sourceYears = [...targetsBySource.keys()].map((k) => Number(k.split('-')[0]))
     const data = await fetchAllRows<ActualRow>((from, to) =>
       supabase
         .from('actuals')
         .select('account_id, year, month, amount')
         .eq('company_id', companyId)
         .eq('cost_center_id', costCenterId)
-        .gte('year', scenario.start_year - 1)
-        .lte('year', scenario.end_year - 1)
+        .gte('year', Math.min(...sourceYears))
+        .lte('year', Math.max(...sourceYears))
         .order('account_id')
         .order('year')
         .order('month')
@@ -182,7 +200,11 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     const map = new Map<string, number>()
     const ids = new Set<number>()
     for (const row of data) {
-      map.set(periodKey(row.year + 1, row.month) + ':' + row.account_id, row.amount)
+      const targets = targetsBySource.get(periodKey(row.year, row.month))
+      if (!targets) continue
+      for (const target of targets) {
+        map.set(target + ':' + row.account_id, row.amount)
+      }
       if (row.amount !== 0) ids.add(row.account_id)
     }
     setPrevActuals(map)
