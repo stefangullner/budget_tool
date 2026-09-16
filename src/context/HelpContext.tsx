@@ -8,6 +8,7 @@ export type HelpSection =
   | 'accounts'
   | 'intercompany'
   | 'admin-users'
+  | 'admin-access'
   | 'admin-scenarios'
   | 'admin-cost-centers'
   | 'admin-deadlines'

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
 import { useRoles } from '@/hooks/useRoles'
 import RoleSectionPermissions from './RoleSectionPermissions'
+import AccessOverview from '@/components/AccessOverview'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
@@ -470,6 +471,21 @@ export default function UsersPage() {
       )}
 
       <RoleSectionPermissions />
+
+      <section className="mt-10">
+        <h2 className="text-base font-semibold text-gray-900">Behörighetsöversikt</h2>
+        <p className="text-sm text-gray-500 mt-0.5 mb-4 max-w-[70ch]">
+          Vad varje användare faktiskt når. Siffrorna kommer från samma funktion som RLS-policyerna går
+          igenom, så vyn och databasen kan inte säga olika saker.
+        </p>
+        <AccessOverview
+          users={users}
+          companies={companies}
+          costCenters={costCenters}
+          roleLabel={(name) =>
+            roleDefinitions.find((r) => r.name === name)?.label ?? name}
+        />
+      </section>
     </div>
   )
 }

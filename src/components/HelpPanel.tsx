@@ -12,6 +12,7 @@ const sections: { id: HelpSection; label: string }[] = [
   { id: 'intercompany',        label: 'Intercompany' },
   { id: 'admin-users',         label: 'Admin / Användare' },
   { id: 'admin-scenarios',     label: 'Admin / Scenarier' },
+  { id: 'admin-access',        label: 'Admin / Behörighetsöversikt' },
   { id: 'admin-cost-centers',  label: 'Admin / Kostnadsställen' },
   { id: 'admin-deadlines',     label: 'Admin / Deadlines' },
   { id: 'admin-sync',          label: 'Admin / Synkronisering' },
@@ -374,6 +375,42 @@ export default function HelpPanel() {
               <p className="text-gray-600">
                 I listan visas hur många kostnadsställen som har låsts för varje scenario — ett snabbt sätt att se hur långt budgetarbetet kommit.
               </p>
+            </section>
+
+            {/* ── ADMIN: BEHÖRIGHETSÖVERSIKT ── */}
+            <section id="help-admin-access">
+              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <ChevronRight size={14} className="text-brand-500" /> Admin / Behörighetsöversikt
+              </h3>
+              <p className="mb-3">
+                Längst ner på användarsidan. Svarar på frågan ”vad når den här personen egentligen?” — roller
+                och scope är svåra att resonera om i huvudet när en användare kan ha flera.
+              </p>
+
+              <h4 className="font-medium text-gray-800 mb-1.5">Per användare</h4>
+              <ul className="space-y-1.5 text-gray-600 mb-4">
+                <li><strong>Räckvidd</strong> — antal kostnadsställen per bolag, och vilken roll som ger dem.</li>
+                <li><strong>Sektioner</strong> — vad som går att editera, bara läsa, eller inte alls.</li>
+                <li><strong>I praktiken</strong> — en rad som sammanfattar om personen kan spara budget. Står
+                  det rött här är det förklaringen till varför någon säger att ändringar inte sparas.</li>
+              </ul>
+
+              <h4 className="font-medium text-gray-800 mb-1.5">Per kostnadsställe</h4>
+              <p className="text-gray-600 mb-4">
+                Omvänd vy: vem kan budgetera ett visst KS? Filtret <strong>Visa bara utan ansvarig</strong> ger
+                listan över kostnadsställen som ingen kommer att fylla i.
+              </p>
+
+              <h4 className="font-medium text-gray-800 mb-1.5">Varningar</h4>
+              <p className="text-gray-600 mb-2">
+                Fångar de vanligaste misstagen: kostnadsställen utan ansvarig, roller vars region är felstavad
+                och därför matchar noll KS, användare utan roller, och KS utan region som är osynliga för
+                regionchefer.
+              </p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-gray-600 text-xs">
+                Siffrorna läses från samma databasfunktion som styr åtkomsten på riktigt. Visar vyn att någon
+                har åtkomst så har de det — den räknar inte ut behörigheter på egen hand.
+              </div>
             </section>
 
             {/* ── ADMIN: KOSTNADSSTÄLLEN ── */}
