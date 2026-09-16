@@ -136,13 +136,16 @@ export default function CostCentersPage() {
     setDeleting(false)
   }
 
-  const deleteRowCount = deleteCounts
-    ? deleteCounts.budget + deleteCounts.actuals + deleteCounts.locks
-    : 0
-  const deleteNeedsTyping = deleteRowCount > 0
+  // Budget entries block the delete outright (the FK is NO ACTION — the work is
+  // hand-entered and cannot be recreated). Actuals cascade away, since they can
+  // be re-imported, but they still warrant a typed confirmation.
+  const deleteBlocked = (deleteCounts?.budget ?? 0) > 0
+  const deleteCascades = (deleteCounts?.actuals ?? 0) + (deleteCounts?.locks ?? 0)
+  const deleteNeedsTyping = deleteCascades > 0
   const canDelete =
     deleteCounts !== null &&
     !deleting &&
+    !deleteBlocked &&
     (!deleteNeedsTyping || deleteConfirmText.trim() === deleteTarget?.code)
 
   const activeCount = costCenters.filter(c => c.is_active).length
@@ -388,7 +391,23 @@ export default function CostCentersPage() {
                 <Loader2 size={14} className="animate-spin" />
                 Kontrollerar kopplad data…
               </div>
-            ) : deleteRowCount === 0 ? (
+            ) : deleteBlocked ? (
+              <>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 mb-4">
+                  <p className="text-sm font-medium text-amber-900">
+                    {deleteCounts.budget.toLocaleString('sv-SE')} budgetposter hindrar borttaget
+                  </p>
+                  <p className="text-sm text-amber-800 mt-1">
+                    Budget matas in för hand och kan inte återskapas, så databasen tillåter inte att
+                    kostnadsstället tas bort så länge den finns kvar.
+                  </p>
+                </div>
+                <p className="text-sm text-gray-500 mb-5">
+                  Stäng av <strong>Aktiv</strong> för att dölja kostnadsstället i budgetvyn — all data behålls
+                  och det går att ångra. Ska det verkligen bort måste budgeten först nollställas i matrisen.
+                </p>
+              </>
+            ) : deleteCascades === 0 ? (
               <p className="text-sm text-gray-600 mb-5">
                 Kostnadsstället har ingen budget eller utfall kopplat. Det går att ta bort utan att något data
                 förloras.
@@ -396,15 +415,9 @@ export default function CostCentersPage() {
             ) : (
               <>
                 <p className="text-sm text-gray-600 mb-3">
-                  Följande tas bort permanent och går inte att återskapa:
+                  Följande tas bort tillsammans med kostnadsstället:
                 </p>
                 <ul className="text-sm rounded-lg border border-red-200 bg-red-50 divide-y divide-red-100 mb-4">
-                  {deleteCounts.budget > 0 && (
-                    <li className="flex justify-between px-3 py-2 text-red-800">
-                      <span>Budgetposter</span>
-                      <span className="font-medium tabular-nums">{deleteCounts.budget.toLocaleString('sv-SE')}</span>
-                    </li>
-                  )}
                   {deleteCounts.actuals > 0 && (
                     <li className="flex justify-between px-3 py-2 text-red-800">
                       <span>Utfallsrader</span>
@@ -419,8 +432,8 @@ export default function CostCentersPage() {
                   )}
                 </ul>
                 <p className="text-sm text-gray-500 mb-4">
-                  Vill du bara dölja kostnadsstället i budgetvyn — stäng av <strong>Aktiv</strong> istället.
-                  Då behålls all data.
+                  Utfall kan importeras om från Fortnox eller Excel. Vill du bara dölja kostnadsstället i
+                  budgetvyn — stäng av <strong>Aktiv</strong> istället.
                 </p>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Skriv <span className="font-mono text-gray-900">{deleteTarget.code}</span> för att bekräfta

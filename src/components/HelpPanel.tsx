@@ -390,13 +390,23 @@ export default function HelpPanel() {
 
               <h4 className="font-medium text-gray-800 mb-1.5">Ta bort kostnadsställe</h4>
               <p className="text-gray-600 mb-2">
-                Papperskorgen till höger tar bort ett KS permanent. Dialogen räknar först upp hur många
-                budgetposter, utfallsrader och scenariolås som är kopplade — finns det data måste du skriva
-                KS-koden för att bekräfta.
+                Papperskorgen till höger tar bort ett KS permanent. Dialogen räknar först upp vad som är
+                kopplat, och vad som händer beror på vilken sorts data det är:
               </p>
+              <ul className="space-y-1.5 text-gray-600 mb-2">
+                <li>
+                  <strong>Budgetposter blockerar borttaget.</strong> Budget matas in för hand och kan inte
+                  återskapas, så databasen vägrar. Nollställ budgeten i matrisen först, eller inaktivera
+                  kostnadsstället.
+                </li>
+                <li>
+                  <strong>Utfall följer med.</strong> Det kan importeras om från Fortnox eller Excel, så det
+                  tas bort tillsammans med KS:et — men du måste skriva KS-koden för att bekräfta.
+                </li>
+              </ul>
               <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-800 text-xs">
-                Borttaget går inte att återskapa. Vill du bara dölja ett KS från budgetvyn — stäng av
-                <strong> Aktiv</strong> istället, då behålls all data.
+                Vill du bara dölja ett KS från budgetvyn — stäng av <strong>Aktiv</strong> istället. Då behålls
+                all data och det går att ångra.
               </div>
             </section>
 
