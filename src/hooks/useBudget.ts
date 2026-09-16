@@ -41,6 +41,9 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   const [saving, setSaving] = useState<Set<string>>(new Set())
   const [icSaving, setIcSaving] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
+  /** Last write that was rejected. Cells update optimistically, so without this
+   *  an RLS denial looks like a successful save until the page reloads. */
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Load scenarios for company
   useEffect(() => {
@@ -248,11 +251,12 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   ) {
     if (!scenarioId || !costCenterId) return
     const key = periodKey(year, month) + ':' + accountId
+    const previous = entries.get(key)
 
     setSaving((prev) => new Set(prev).add(key))
     setEntries((prev) => new Map(prev).set(key, amount))
 
-    await supabase.from('budget_entries').upsert(
+    const { error } = await supabase.from('budget_entries').upsert(
       {
         scenario_id: scenarioId,
         account_id: accountId,
@@ -266,6 +270,17 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
       },
       { onConflict: 'scenario_id,account_id,cost_center_id,year,month,counterpart_company_id' },
     )
+
+    if (error) {
+      // Put the cell back so the screen matches what is actually stored
+      setEntries((prev) => {
+        const next = new Map(prev)
+        if (previous === undefined) next.delete(key)
+        else next.set(key, previous)
+        return next
+      })
+      setSaveError(error.message)
+    }
 
     setSaving((prev) => {
       const next = new Set(prev)
@@ -284,11 +299,12 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   ) {
     if (!scenarioId || !costCenterId) return
     const key = periodKey(year, month) + ':' + accountId + ':' + counterpartId
+    const previous = icEntries.get(key)
 
     setIcSaving((prev) => new Set(prev).add(key))
     setIcEntries((prev) => new Map(prev).set(key, amount))
 
-    await supabase.from('budget_entries').upsert(
+    const { error } = await supabase.from('budget_entries').upsert(
       {
         scenario_id: scenarioId,
         account_id: accountId,
@@ -303,6 +319,16 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
       { onConflict: 'scenario_id,account_id,cost_center_id,year,month,counterpart_company_id' },
     )
 
+    if (error) {
+      setIcEntries((prev) => {
+        const next = new Map(prev)
+        if (previous === undefined) next.delete(key)
+        else next.set(key, previous)
+        return next
+      })
+      setSaveError(error.message)
+    }
+
     setIcSaving((prev) => {
       const next = new Set(prev)
       next.delete(key)
@@ -315,18 +341,20 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     const isLocked = locks.some((l) => l.cost_center_id === costCenterId)
 
     if (isLocked) {
-      await supabase
+      const { error } = await supabase
         .from('scenario_locks')
         .delete()
         .eq('scenario_id', scenarioId)
         .eq('cost_center_id', costCenterId)
+      if (error) { setSaveError(error.message); return }
       setLocks((prev) => prev.filter((l) => l.cost_center_id !== costCenterId))
     } else {
-      await supabase.from('scenario_locks').insert({
+      const { error } = await supabase.from('scenario_locks').insert({
         scenario_id: scenarioId,
         cost_center_id: costCenterId,
         locked_by: userId,
       })
+      if (error) { setSaveError(error.message); return }
       setLocks((prev) => [
         ...prev,
         { scenario_id: scenarioId, cost_center_id: costCenterId, locked_by: userId, locked_at: new Date().toISOString() },
@@ -416,6 +444,8 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     saving,
     icSaving,
     loading,
+    saveError,
+    clearSaveError: () => setSaveError(null),
     upsertEntry,
     upsertICEntry,
     toggleLock,

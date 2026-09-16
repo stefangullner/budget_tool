@@ -1,5 +1,5 @@
 import { useRef, useCallback, Fragment, useState, useEffect, useMemo } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2 } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
@@ -35,6 +35,19 @@ interface Props {
   onCellChange: (accountId: number, year: number, month: number, amount: number) => void
   onICCellChange: (accountId: number, counterpartId: number, year: number, month: number, amount: number) => void
   onToggleLock: () => void
+  saveError?: string | null
+  onDismissSaveError?: () => void
+}
+
+/** RLS denials come back as raw Postgres text — say what it means instead. */
+function describeSaveError(message: string) {
+  if (/row-level security|permission denied/i.test(message)) {
+    return 'Du saknar behörighet att spara på det här kostnadsstället. Kontakta en administratör.'
+  }
+  if (/violates foreign key/i.test(message)) {
+    return 'Kontot eller kostnadsstället finns inte längre. Ladda om sidan.'
+  }
+  return message
 }
 
 function fmt(n: number) {
@@ -108,6 +121,8 @@ export default function BudgetMatrix({
   onCellChange,
   onICCellChange,
   onToggleLock,
+  saveError,
+  onDismissSaveError,
 }: Props) {
   const sectionOrderMap = useSectionOrder()
   const periods = scenarioPeriods(scenario)
@@ -472,6 +487,25 @@ export default function BudgetMatrix({
           </button>
         </div>
       </div>
+
+      {saveError && (
+        <div className="flex items-start gap-2.5 px-4 py-3 mb-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium">Ändringen sparades inte</p>
+            <p className="mt-0.5 text-red-700">{describeSaveError(saveError)}</p>
+          </div>
+          {onDismissSaveError && (
+            <button
+              onClick={onDismissSaveError}
+              className="shrink-0 text-red-400 hover:text-red-700 transition-colors"
+              title="Stäng"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className={cn('min-w-max', d.table)}>

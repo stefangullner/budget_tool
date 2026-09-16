@@ -47,6 +47,8 @@ export default function BudgetPage() {
     saving,
     icSaving,
     loading,
+    saveError,
+    clearSaveError,
     upsertEntry,
     upsertICEntry,
     toggleLock,
@@ -263,6 +265,8 @@ export default function BudgetPage() {
             upsertICEntry(accountId, counterpartId, year, month, amount, userId)
           }
           onToggleLock={() => toggleLock(selectedCostCenterId, userId)}
+          saveError={saveError}
+          onDismissSaveError={clearSaveError}
         />
       ))}
 
