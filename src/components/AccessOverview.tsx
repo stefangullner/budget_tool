@@ -39,11 +39,6 @@ export default function AccessOverview({ users, companies, costCenters, roleLabe
 
   const selected = users.find((u) => u.id === selectedId) ?? users[0] ?? null
 
-  const ccById = useMemo(
-    () => new Map(costCenters.map((cc) => [cc.id, cc])),
-    [costCenters],
-  )
-
   /** Users who can reach a cost centre without being an administrator. */
   const nonAdminReach = useMemo(() => {
     const byCc = new Map<number, UserLite[]>()
