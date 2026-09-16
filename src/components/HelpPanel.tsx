@@ -384,9 +384,20 @@ export default function HelpPanel() {
               <p className="mb-3">
                 Kostnadsställen (KS) synkas automatiskt från Fortnox via Fabric. Här kan du aktivera eller inaktivera enskilda KS för budgetarbetet.
               </p>
-              <p className="text-gray-600">
+              <p className="text-gray-600 mb-4">
                 Inaktiva KS syns inte i budgetvyn men bevaras i databasen. Reaktivering återställer eventuellt sparad budget.
               </p>
+
+              <h4 className="font-medium text-gray-800 mb-1.5">Ta bort kostnadsställe</h4>
+              <p className="text-gray-600 mb-2">
+                Papperskorgen till höger tar bort ett KS permanent. Dialogen räknar först upp hur många
+                budgetposter, utfallsrader och scenariolås som är kopplade — finns det data måste du skriva
+                KS-koden för att bekräfta.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-800 text-xs">
+                Borttaget går inte att återskapa. Vill du bara dölja ett KS från budgetvyn — stäng av
+                <strong> Aktiv</strong> istället, då behålls all data.
+              </div>
             </section>
 
             {/* ── ADMIN: DEADLINES ── */}

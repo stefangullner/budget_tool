@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Check, X, Pencil, Plus } from 'lucide-react'
+import { Check, X, Pencil, Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,14 @@ export default function CostCentersPage() {
   const [newName, setNewName] = useState('')
   const [newRegion, setNewRegion] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Delete flow — a cost centre carries budget and actuals, so the dialog counts
+  // what would be destroyed before letting the user through
+  const [deleteTarget, setDeleteTarget] = useState<CostCenterRow | null>(null)
+  const [deleteCounts, setDeleteCounts] = useState<{ budget: number; actuals: number; locks: number } | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.from('companies').select('*').order('id').then(({ data }) => {
@@ -95,6 +103,47 @@ export default function CostCentersPage() {
     setShowNewRow(false)
     setSaving(false)
   }
+
+  async function openDelete(cc: CostCenterRow) {
+    setDeleteTarget(cc)
+    setDeleteCounts(null)
+    setDeleteConfirmText('')
+    setDeleteError(null)
+    const [budget, actuals, locks] = await Promise.all([
+      supabase.from('budget_entries').select('*', { count: 'exact', head: true }).eq('cost_center_id', cc.id),
+      supabase.from('actuals').select('*', { count: 'exact', head: true }).eq('cost_center_id', cc.id),
+      supabase.from('scenario_locks').select('*', { count: 'exact', head: true }).eq('cost_center_id', cc.id),
+    ])
+    setDeleteCounts({
+      budget: budget.count ?? 0,
+      actuals: actuals.count ?? 0,
+      locks: locks.count ?? 0,
+    })
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    const { error } = await supabase.from('cost_centers').delete().eq('id', deleteTarget.id)
+    if (error) {
+      setDeleteError(error.message)
+      setDeleting(false)
+      return
+    }
+    setCostCenters(prev => prev.filter(c => c.id !== deleteTarget.id))
+    setDeleteTarget(null)
+    setDeleting(false)
+  }
+
+  const deleteRowCount = deleteCounts
+    ? deleteCounts.budget + deleteCounts.actuals + deleteCounts.locks
+    : 0
+  const deleteNeedsTyping = deleteRowCount > 0
+  const canDelete =
+    deleteCounts !== null &&
+    !deleting &&
+    (!deleteNeedsTyping || deleteConfirmText.trim() === deleteTarget?.code)
 
   const activeCount = costCenters.filter(c => c.is_active).length
   const inactiveCount = costCenters.length - activeCount
@@ -230,13 +279,22 @@ export default function CostCentersPage() {
                         </button>
                       </td>
                       <td className="px-4 py-2.5">
-                        <button
-                          onClick={() => startEdit(cc)}
-                          className="p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors float-right"
-                          title="Redigera"
-                        >
-                          <Pencil size={14} />
-                        </button>
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            onClick={() => startEdit(cc)}
+                            className="p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                            title="Redigera"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => openDelete(cc)}
+                            className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Ta bort"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </>
                   )}
@@ -306,6 +364,100 @@ export default function CostCentersPage() {
               Inga kostnadsställen för detta bolag
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="p-2 rounded-full bg-red-50 text-red-600 shrink-0">
+                <AlertTriangle size={16} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-gray-900">Ta bort kostnadsställe?</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  <span className="font-mono text-gray-700">{deleteTarget.code}</span> — {deleteTarget.name}
+                </p>
+              </div>
+            </div>
+
+            {deleteCounts === null ? (
+              <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
+                <Loader2 size={14} className="animate-spin" />
+                Kontrollerar kopplad data…
+              </div>
+            ) : deleteRowCount === 0 ? (
+              <p className="text-sm text-gray-600 mb-5">
+                Kostnadsstället har ingen budget eller utfall kopplat. Det går att ta bort utan att något data
+                förloras.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-3">
+                  Följande tas bort permanent och går inte att återskapa:
+                </p>
+                <ul className="text-sm rounded-lg border border-red-200 bg-red-50 divide-y divide-red-100 mb-4">
+                  {deleteCounts.budget > 0 && (
+                    <li className="flex justify-between px-3 py-2 text-red-800">
+                      <span>Budgetposter</span>
+                      <span className="font-medium tabular-nums">{deleteCounts.budget.toLocaleString('sv-SE')}</span>
+                    </li>
+                  )}
+                  {deleteCounts.actuals > 0 && (
+                    <li className="flex justify-between px-3 py-2 text-red-800">
+                      <span>Utfallsrader</span>
+                      <span className="font-medium tabular-nums">{deleteCounts.actuals.toLocaleString('sv-SE')}</span>
+                    </li>
+                  )}
+                  {deleteCounts.locks > 0 && (
+                    <li className="flex justify-between px-3 py-2 text-red-800">
+                      <span>Scenariolås</span>
+                      <span className="font-medium tabular-nums">{deleteCounts.locks.toLocaleString('sv-SE')}</span>
+                    </li>
+                  )}
+                </ul>
+                <p className="text-sm text-gray-500 mb-4">
+                  Vill du bara dölja kostnadsstället i budgetvyn — stäng av <strong>Aktiv</strong> istället.
+                  Då behålls all data.
+                </p>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Skriv <span className="font-mono text-gray-900">{deleteTarget.code}</span> för att bekräfta
+                </label>
+                <input
+                  autoFocus
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && canDelete) confirmDelete() }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-400 mb-4"
+                />
+              </>
+            )}
+
+            {deleteError && (
+              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                Kunde inte ta bort: {deleteError}
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50"
+              >
+                Avbryt
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={!canDelete}
+                className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {deleting ? 'Tar bort…' : 'Ta bort'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
