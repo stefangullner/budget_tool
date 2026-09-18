@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { X, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -54,16 +54,33 @@ export default function PercentageDialog({
   const hasPrevData = prevYearData.size > 0
   const showNoPrevWarning = base === 'prevyear' && !loadingPrev && !hasPrevData
 
-  useEffect(() => {
-    setLoadingPrev(true)
-    // Follow the scenario's per-month comparison year so "föregående år" means
-    // the same data the matrix shows in its "Utfall" column
-    const sourceByMonth = new Map<number, number>()
+  // Follow the scenario's per-month comparison year so the base means the same
+  // data the matrix shows in its "Utfall" column
+  const sourceByMonth = useMemo(() => {
+    const map = new Map<number, number>()
     for (const { year, month } of scenarioPeriods(scenario)) {
-      if (!sourceByMonth.has(month)) {
-        sourceByMonth.set(month, comparisonYearFor(scenario.comparison_periods, year, month))
+      if (!map.has(month)) {
+        map.set(month, comparisonYearFor(scenario.comparison_periods, year, month))
       }
     }
+    return map
+  }, [scenario])
+
+  /** The years the base actually comes from — a scenario may mix them. */
+  const sourceLabel = useMemo(() => {
+    const years = [
+      ...new Set(
+        futurePeriods
+          .map((p) => sourceByMonth.get(p.month))
+          .filter((y): y is number => y !== undefined),
+      ),
+    ].sort()
+    if (years.length === 0) return String(scenario.start_year - 1)
+    return years.length === 1 ? String(years[0]) : `${years[0]}–${years[years.length - 1]}`
+  }, [futurePeriods, sourceByMonth, scenario.start_year])
+
+  useEffect(() => {
+    setLoadingPrev(true)
     const years = [...new Set(sourceByMonth.values())]
     supabase
       .from('actuals')
@@ -81,7 +98,7 @@ export default function PercentageDialog({
         setPrevYearData(map)
         setLoadingPrev(false)
       })
-  }, [account.id, companyId, costCenterId, scenario])
+  }, [account.id, companyId, costCenterId, sourceByMonth])
 
   const pct = parsePercent(percentInput)
   const multiplier = pct !== null ? 1 + pct / 100 : null
@@ -160,7 +177,7 @@ export default function PercentageDialog({
             <div className="space-y-2">
               {([
                 ['current', 'Nuvarande värden', 'Räknar upp/ned de belopp som redan finns på raden'],
-                ['prevyear', `Föregående år (${scenario.start_year - 1})`, 'Använder utfall från föregående år som bas'],
+                ['prevyear', `Utfall (${sourceLabel})`, 'Använder jämförelseårets utfall som bas'],
               ] as [Base, string, string][]).map(([value, label, desc]) => (
                 <label key={value} className="flex items-start gap-2.5 cursor-pointer">
                   <input
@@ -185,7 +202,7 @@ export default function PercentageDialog({
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
               <span>
-                Inga utfall för {scenario.start_year - 1} hittades — alla basvärden blir 0.
+                Inga utfall för {sourceLabel} hittades — alla basvärden blir 0.
               </span>
             </div>
           )}

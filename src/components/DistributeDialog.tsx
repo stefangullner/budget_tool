@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { X, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -56,16 +56,33 @@ export default function DistributeDialog({
   const hasFuturePeriods = futurePeriods.length > 0
   const hasPrevData = prevYearData.size > 0
 
-  useEffect(() => {
-    setLoadingPrev(true)
-    // Follow the scenario's per-month comparison year so the weighting matches
-    // the "Utfall" column in the matrix
-    const sourceByMonth = new Map<number, number>()
+  // Follow the scenario's per-month comparison year so the weighting matches
+  // the "Utfall" column in the matrix
+  const sourceByMonth = useMemo(() => {
+    const map = new Map<number, number>()
     for (const { year, month } of scenarioPeriods(scenario)) {
-      if (!sourceByMonth.has(month)) {
-        sourceByMonth.set(month, comparisonYearFor(scenario.comparison_periods, year, month))
+      if (!map.has(month)) {
+        map.set(month, comparisonYearFor(scenario.comparison_periods, year, month))
       }
     }
+    return map
+  }, [scenario])
+
+  /** The years the comparison actually comes from — a scenario may mix them. */
+  const sourceLabel = useMemo(() => {
+    const years = [
+      ...new Set(
+        futurePeriods
+          .map((p) => sourceByMonth.get(p.month))
+          .filter((y): y is number => y !== undefined),
+      ),
+    ].sort()
+    if (years.length === 0) return String(scenario.start_year - 1)
+    return years.length === 1 ? String(years[0]) : `${years[0]}–${years[years.length - 1]}`
+  }, [futurePeriods, sourceByMonth, scenario.start_year])
+
+  useEffect(() => {
+    setLoadingPrev(true)
     const years = [...new Set(sourceByMonth.values())]
     supabase
       .from('actuals')
@@ -83,7 +100,7 @@ export default function DistributeDialog({
         setPrevYearData(map)
         setLoadingPrev(false)
       })
-  }, [account.id, companyId, costCenterId, scenario])
+  }, [account.id, companyId, costCenterId, sourceByMonth])
 
   function computePreview(): { year: number; month: number; amount: number }[] {
     if (!hasFuturePeriods) return []
@@ -155,8 +172,8 @@ export default function DistributeDialog({
             <div className="space-y-2">
               {([
                 ['even', 'Jämnt', 'Delar totalbeloppet lika över alla framtida månader'],
-                ['seasonal', 'Säsongsmönster', `Fördelar proportionellt baserat på utfall ${scenario.start_year - 1}`],
-                ['copy', 'Kopiera från föregående år', `Kopierar exakta belopp från ${scenario.start_year - 1} (utan skalning)`],
+                ['seasonal', 'Säsongsmönster', `Fördelar proportionellt baserat på utfall ${sourceLabel}`],
+                ['copy', 'Kopiera utfall', `Kopierar exakta belopp från ${sourceLabel} (utan skalning)`],
               ] as [Method, string, string][]).map(([value, label, desc]) => (
                 <label key={value} className="flex items-start gap-2.5 cursor-pointer group">
                   <input
@@ -181,7 +198,7 @@ export default function DistributeDialog({
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
               <span>
-                Inga utfall för {scenario.start_year - 1} hittades för detta konto och kostnadsställe.
+                Inga utfall för {sourceLabel} hittades för detta konto och kostnadsställe.
                 {method === 'seasonal' && ' Faller tillbaka på jämn fördelning.'}
               </span>
             </div>
