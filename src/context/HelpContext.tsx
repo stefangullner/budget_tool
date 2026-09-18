@@ -14,6 +14,7 @@ export type HelpSection =
   | 'admin-cost-centers'
   | 'admin-deadlines'
   | 'admin-bulk'
+  | 'admin-intercompany'
   | 'admin-sync'
   | 'admin-import'
   | 'admin-export'

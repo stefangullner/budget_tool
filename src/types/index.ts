@@ -44,6 +44,19 @@ export interface AccountConfig {
   notes: string | null
 }
 
+/**
+ * Which cost account belongs to which revenue account in intercompany trade.
+ * The accounts carry company_id, so a link implicitly names the company pair.
+ */
+export interface IntercompanyAccountLink {
+  id: number
+  revenue_account_id: number
+  cost_account_id: number
+  note: string | null
+  created_by: string | null
+  created_at: string
+}
+
 export interface Scenario {
   id: number
   company_id: number

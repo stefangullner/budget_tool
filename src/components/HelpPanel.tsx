@@ -17,6 +17,7 @@ const sections: { id: HelpSection; label: string }[] = [
   { id: 'admin-cost-centers',  label: 'Admin / Kostnadsställen' },
   { id: 'admin-deadlines',     label: 'Admin / Deadlines' },
   { id: 'admin-bulk',          label: 'Admin / Massfördelning' },
+  { id: 'admin-intercompany',  label: 'Admin / Internhandel' },
   { id: 'admin-sync',          label: 'Admin / Synkronisering' },
   { id: 'admin-export',        label: 'Admin / Export' },
 ]
@@ -584,6 +585,42 @@ export default function HelpPanel() {
                   En körning går inte att ångra. Använd <em>Lämna orörda</em> om budgetarbetet redan är igång.
                 </li>
               </ul>
+            </section>
+
+            {/* ── ADMIN: INTERNHANDEL ── */}
+            <section id="help-admin-intercompany">
+              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <ChevronRight size={14} className="text-brand-500" /> Admin / Internhandel
+              </h3>
+              <p className="mb-3">
+                Talar om vilket kostnadskonto hos köparen som hör ihop med vilket intäktskonto hos
+                säljaren. Utan kopplingen kan avstämningen inte veta vilka belopp som ska ta ut
+                varandra — den jämförde tidigare samma kontonummer i båda bolagen, vilket bara
+                fungerade när kontoplanerna råkade vara identiska.
+              </p>
+              <ul className="space-y-2 text-gray-600 mb-4">
+                <li>
+                  Välj <strong>säljande bolag</strong>. Sidan listar bolagets konton som är markerade
+                  som intercompany under <strong>Konton</strong>.
+                </li>
+                <li>
+                  <strong>Koppla konto</strong> — välj köpande bolag och dess kostnadskonto. Listan
+                  visar köparens IC-markerade konton; kryssa i <em>Visa alla konton</em> om motpartens
+                  konto inte är markerat ännu.
+                </li>
+                <li>
+                  Ett intäktskonto kan ha <strong>flera kostnadskonton</strong> — ett per köpande bolag,
+                  och flera inom samma bolag om köparen delar upp kostnaden. Köparens sida blir då
+                  summan av dem.
+                </li>
+                <li>
+                  Konton utan koppling markeras gult och ingår inte i avstämningen.
+                </li>
+              </ul>
+              <p className="text-gray-600">
+                De två kontona måste ligga i olika bolag — databasen vägrar annars. Tas ett konto bort
+                försvinner kopplingen med det.
+              </p>
             </section>
 
             {/* ── ADMIN: SYNKRONISERING ── */}
