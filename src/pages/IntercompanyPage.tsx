@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react'
+import {
+  CheckCircle2, AlertTriangle, ChevronDown, ChevronRight, Info, Loader2, Lock, Plus, X,
+} from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase, fetchAllRows } from '@/lib/supabase'
 import { useIntercompanyLinks } from '@/hooks/useIntercompanyLinks'
 import { useRole } from '@/hooks/useRole'
 import { cn } from '@/lib/utils'
-import type { Company } from '@/types'
+import type { Company, CostCenter } from '@/types'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
@@ -21,6 +23,7 @@ type ScenarioRow = {
 
 type EntryRow = {
   account_id: number
+  cost_center_id: number
   year: number
   month: number
   amount: number
@@ -38,16 +41,47 @@ type Period = { year: number; month: number }
 
 function pKey(year: number, month: number) { return `${year}-${month}` }
 
+/** One budget cell: account, cost center, period and the counterpart it faces. */
+function eKey(accountId: number, costCenterId: number, year: number, month: number, counterpart: number) {
+  return `${accountId}:${costCenterId}:${pKey(year, month)}:${counterpart}`
+}
+
 function fmt(n: number) {
   if (n === 0) return '—'
   return new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 }).format(n)
 }
 
+function fmtInput(n: number) {
+  if (n === 0) return ''
+  return new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 }).format(n)
+}
+
+function parseSEK(s: string): number {
+  const n = parseFloat(s.replace(/\s/g, '').replace(',', '.'))
+  return isNaN(n) ? 0 : n
+}
+
+/** RLS denials come back as raw Postgres text — say what it means instead. */
+function describeSaveError(message: string) {
+  if (/row-level security|permission denied/i.test(message)) {
+    return 'Du saknar behörighet att spara i det bolaget. Internhandel spänner över bolagsgränsen — motpartens sida kräver behörighet där.'
+  }
+  if (/violates foreign key/i.test(message)) {
+    return 'Kontot eller kostnadsstället finns inte längre. Ladda om sidan.'
+  }
+  return message
+}
+
+interface SideRow {
+  costCenter: CostCenter
+  locked: boolean
+}
+
 interface CounterpartLine {
   companyId: number
   costAccounts: ICAccount[]
-  seller: Map<string, number>
-  buyer: Map<string, number>
+  sellerRows: SideRow[]
+  buyerRows: SideRow[]
   sellerTotal: number
   buyerTotal: number
   netTotal: number
@@ -67,21 +101,46 @@ interface AccountLine {
 
 export default function IntercompanyPage() {
   const [companies, setCompanies] = useState<Company[]>([])
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([])
   const [scenarios, setScenarios] = useState<ScenarioRow[]>([])
   const [selectedName, setSelectedName] = useState('')
   const [icAccounts, setIcAccounts] = useState<ICAccount[]>([])
-  const [entries, setEntries] = useState<EntryRow[]>([])
+  const [amounts, setAmounts] = useState<Map<string, number>>(new Map())
+  const [presentRows, setPresentRows] = useState<Map<string, Set<number>>>(new Map())
+  const [addedRows, setAddedRows] = useState<Map<string, Set<number>>>(new Map())
+  const [lockedCostCenters, setLockedCostCenters] = useState<Set<number>>(new Set())
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set())
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [onlyDiff, setOnlyDiff] = useState(false)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [openSides, setOpenSides] = useState<Set<string>>(new Set())
+  const [adding, setAdding] = useState<string | null>(null)
+  const [userId, setUserId] = useState('')
 
   const { links, accounts: linkedAccounts, loading: loadingLinks } = useIntercompanyLinks()
   const { isAdmin } = useRole()
 
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+  function isPastPeriod(year: number, month: number) {
+    return year < currentYear || (year === currentYear && month < currentMonth)
+  }
+
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) setUserId(data.user.id)
+    })
     supabase.from('companies').select('*').order('id').then(({ data }) => {
       setCompanies((data ?? []) as Company[])
     })
+    supabase
+      .from('cost_centers')
+      .select('*')
+      .eq('is_active', true)
+      .order('code')
+      .then(({ data }) => setCostCenters((data ?? []) as CostCenter[]))
     supabase
       .from('scenarios')
       .select('id, name, company_id, start_year, start_month, end_year, end_month')
@@ -145,50 +204,67 @@ export default function IntercompanyPage() {
 
   useEffect(() => {
     if (matching.length === 0 || involvedIds.length === 0) {
-      setEntries([])
+      setAmounts(new Map())
+      setPresentRows(new Map())
       return
     }
     let cancelled = false
     setLoading(true)
     const scenarioIds = matching.map((s) => s.id)
 
-    fetchAllRows<EntryRow>((from, to) =>
-      supabase
-        .from('budget_entries')
-        .select('account_id, year, month, amount, counterpart_company_id')
-        .in('scenario_id', scenarioIds)
-        .in('account_id', involvedIds)
-        .order('account_id')
-        .order('year')
-        .order('month')
-        .range(from, to),
-    ).then((rows) => {
+    Promise.all([
+      fetchAllRows<EntryRow>((from, to) =>
+        supabase
+          .from('budget_entries')
+          .select('account_id, cost_center_id, year, month, amount, counterpart_company_id')
+          .in('scenario_id', scenarioIds)
+          .in('account_id', involvedIds)
+          .order('account_id')
+          .order('cost_center_id')
+          .order('year')
+          .order('month')
+          .range(from, to),
+      ),
+      supabase.from('scenario_locks').select('cost_center_id').in('scenario_id', scenarioIds),
+    ]).then(([rows, lockResult]) => {
       if (cancelled) return
-      setEntries(rows)
+
+      const map = new Map<string, number>()
+      const present = new Map<string, Set<number>>()
+      for (const r of rows) {
+        const counterpart = r.counterpart_company_id ?? 0
+        const k = eKey(r.account_id, r.cost_center_id, r.year, r.month, counterpart)
+        map.set(k, (map.get(k) ?? 0) + r.amount)
+        const rowKey = `${r.account_id}:${counterpart}`
+        const set = present.get(rowKey)
+        if (set) set.add(r.cost_center_id)
+        else present.set(rowKey, new Set([r.cost_center_id]))
+      }
+      setAmounts(map)
+      setPresentRows(present)
+      setLockedCostCenters(
+        new Set((lockResult.data ?? []).map((l) => l.cost_center_id as number)),
+      )
       setLoading(false)
     })
 
     return () => { cancelled = true }
   }, [matching, involvedIds])
 
+  function amountOf(accountId: number, costCenterId: number, p: Period, counterpart: number) {
+    return amounts.get(eKey(accountId, costCenterId, p.year, p.month, counterpart)) ?? 0
+  }
+
   /**
-   * One line per revenue account, one sub-line per counterpart company.
+   * One line per revenue account, one sub-line per counterpart company, and
+   * under each side the cost centers that carry the amounts.
    *
-   * The seller's amount sits on its own account with the buyer as counterpart;
-   * the buyer's sits on the linked cost account(s) with the seller as counterpart.
+   * The seller's amounts sit on its own account with the buyer as counterpart;
+   * the buyer's sit on the linked cost account(s) with the seller as counterpart.
    * Matching on account_number — what this page did before — only ever worked
    * when both companies happened to use identical charts of accounts.
    */
   const lines: AccountLine[] = useMemo(() => {
-    const byAccount = new Map<string, number>()
-    for (const e of entries) {
-      const k = `${e.account_id}:${pKey(e.year, e.month)}:${e.counterpart_company_id ?? 0}`
-      byAccount.set(k, (byAccount.get(k) ?? 0) + e.amount)
-    }
-    const amountOf = (accountId: number, p: Period, counterpart: number) =>
-      byAccount.get(`${accountId}:${pKey(p.year, p.month)}:${counterpart}`) ?? 0
-
-    // revenue account -> cost accounts
     const costByRevenue = new Map<number, ICAccount[]>()
     for (const link of links) {
       const cost = linkedAccounts.get(link.cost_account_id)
@@ -196,6 +272,17 @@ export default function IntercompanyPage() {
       const list = costByRevenue.get(link.revenue_account_id)
       if (list) list.push(cost)
       else costByRevenue.set(link.revenue_account_id, [cost])
+    }
+
+    function rowsFor(accountIds: number[], companyId: number, counterpart: number): SideRow[] {
+      const ids = new Set<number>()
+      for (const accountId of accountIds) {
+        for (const cc of presentRows.get(`${accountId}:${counterpart}`) ?? []) ids.add(cc)
+        for (const cc of addedRows.get(`${accountId}:${counterpart}`) ?? []) ids.add(cc)
+      }
+      return costCenters
+        .filter((c) => c.company_id === companyId && ids.has(c.id))
+        .map((c) => ({ costCenter: c, locked: lockedCostCenters.has(c.id) }))
     }
 
     const out: AccountLine[] = []
@@ -212,29 +299,29 @@ export default function IntercompanyPage() {
 
       const counterparts: CounterpartLine[] = []
       for (const [companyId, costAccounts] of byCounterpart) {
-        const seller = new Map<string, number>()
-        const buyer = new Map<string, number>()
-        let sellerTotal = 0
-        let buyerTotal = 0
+        const sellerRows = rowsFor([revenueId], revenue.company_id, companyId)
+        const buyerRows = rowsFor(costAccounts.map((c) => c.id), companyId, revenue.company_id)
 
-        for (const p of periods) {
-          const s = amountOf(revenueId, p, companyId)
-          const b = costAccounts.reduce(
-            (sum, c) => sum + amountOf(c.id, p, revenue.company_id),
-            0,
-          )
-          seller.set(pKey(p.year, p.month), s)
-          buyer.set(pKey(p.year, p.month), b)
-          sellerTotal += s
-          buyerTotal += b
-        }
+        const sellerTotal = sellerRows.reduce(
+          (sum, r) => sum + periods.reduce((s, p) => s + amountOf(revenueId, r.costCenter.id, p, companyId), 0),
+          0,
+        )
+        const buyerTotal = buyerRows.reduce(
+          (sum, r) =>
+            sum +
+            costAccounts.reduce(
+              (s, c) => s + periods.reduce((t, p) => t + amountOf(c.id, r.costCenter.id, p, revenue.company_id), 0),
+              0,
+            ),
+          0,
+        )
 
         const netTotal = sellerTotal + buyerTotal
         counterparts.push({
           companyId,
           costAccounts,
-          seller,
-          buyer,
+          sellerRows,
+          buyerRows,
           sellerTotal,
           buyerTotal,
           netTotal,
@@ -256,23 +343,88 @@ export default function IntercompanyPage() {
     }
 
     return out.sort((a, b) => a.accountNumber.localeCompare(b.accountNumber, 'sv'))
-  }, [entries, links, linkedAccounts, periods])
+  }, [links, linkedAccounts, presentRows, addedRows, costCenters, lockedCostCenters, amounts, periods])
 
   // Auto-expand what needs attention
   useEffect(() => {
     setExpanded(new Set(lines.filter((l) => !l.balanced).map((l) => l.accountId)))
-  }, [lines])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [links, selectedName])
 
-  const linkedRevenueIds = useMemo(
-    () => new Set(links.map((l) => l.revenue_account_id)),
-    [links],
-  )
+  async function writeCell(
+    companyId: number,
+    accountId: number,
+    costCenterId: number,
+    year: number,
+    month: number,
+    amount: number,
+    counterpart: number,
+  ) {
+    const scenarioId = scenarioByCompany.get(companyId)
+    if (!scenarioId) {
+      setSaveError('Bolaget saknar ett scenario med det här namnet — det finns inget att spara i.')
+      return
+    }
+    const k = eKey(accountId, costCenterId, year, month, counterpart)
+    const previous = amounts.get(k)
+
+    setSavingKeys((prev) => new Set(prev).add(k))
+    setAmounts((prev) => new Map(prev).set(k, amount))
+
+    const { error } = await supabase.from('budget_entries').upsert(
+      {
+        scenario_id: scenarioId,
+        account_id: accountId,
+        cost_center_id: costCenterId,
+        year,
+        month,
+        amount,
+        counterpart_company_id: counterpart,
+        updated_by: userId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'scenario_id,account_id,cost_center_id,year,month,counterpart_company_id' },
+    )
+
+    if (error) {
+      setAmounts((prev) => {
+        const next = new Map(prev)
+        if (previous === undefined) next.delete(k)
+        else next.set(k, previous)
+        return next
+      })
+      setSaveError(error.message)
+    }
+
+    setSavingKeys((prev) => {
+      const next = new Set(prev)
+      next.delete(k)
+      return next
+    })
+  }
+
+  function addCostCenter(accountId: number, counterpart: number, costCenterId: number) {
+    const rowKey = `${accountId}:${counterpart}`
+    setAddedRows((prev) => {
+      const next = new Map(prev)
+      const set = new Set(next.get(rowKey) ?? [])
+      set.add(costCenterId)
+      next.set(rowKey, set)
+      return next
+    })
+    setAdding(null)
+  }
+
+  const linkedRevenueIds = useMemo(() => new Set(links.map((l) => l.revenue_account_id)), [links])
   const linkedCostIds = useMemo(() => new Set(links.map((l) => l.cost_account_id)), [links])
-  const unlinked = icAccounts.filter(
-    (a) => !linkedRevenueIds.has(a.id) && !linkedCostIds.has(a.id),
-  )
+  const unlinked = icAccounts.filter((a) => !linkedRevenueIds.has(a.id) && !linkedCostIds.has(a.id))
 
-  const missingCounterpart = entries.filter((e) => e.counterpart_company_id === null).length
+  const missingCounterpart = useMemo(() => {
+    let n = 0
+    for (const [k, v] of amounts) if (k.endsWith(':0') && v !== 0) n++
+    return n
+  }, [amounts])
+
   const companiesWithoutScenario = companies.filter((c) => !scenarioByCompany.has(c.id))
 
   function companyName(id: number) {
@@ -288,9 +440,186 @@ export default function IntercompanyPage() {
     })
   }
 
+  function toggleSide(key: string) {
+    setOpenSides((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   const displayed = onlyDiff ? lines.filter((l) => !l.balanced) : lines
   const balancedCount = lines.filter((l) => l.balanced).length
   const busy = loading || loadingLinks
+  const colCount = 1 + periods.length + 1
+
+  /** Editable rows for one side, plus the control to bring in another cost center. */
+  function renderSide(
+    line: AccountLine,
+    cp: CounterpartLine,
+    side: 'seller' | 'buyer',
+  ) {
+    const isSeller = side === 'seller'
+    const sideKey = `${line.accountId}:${cp.companyId}:${side}`
+    const isOpen = openSides.has(sideKey)
+    const rows = isSeller ? cp.sellerRows : cp.buyerRows
+    const companyId = isSeller ? line.sellerCompanyId : cp.companyId
+    const counterpart = isSeller ? cp.companyId : line.sellerCompanyId
+    // The buyer may have several linked accounts; only one can take input
+    const writeAccountId = isSeller ? line.accountId : cp.costAccounts[0].id
+    const readAccountIds = isSeller ? [line.accountId] : cp.costAccounts.map((c) => c.id)
+    const ambiguous = !isSeller && cp.costAccounts.length > 1
+    const total = isSeller ? cp.sellerTotal : cp.buyerTotal
+    const hasScenario = scenarioByCompany.has(companyId)
+    const available = costCenters.filter(
+      (c) => c.company_id === companyId && !rows.some((r) => r.costCenter.id === c.id),
+    )
+
+    function cellValue(costCenterId: number, p: Period) {
+      return readAccountIds.reduce((s, id) => s + amountOf(id, costCenterId, p, counterpart), 0)
+    }
+
+    return (
+      <>
+        <tr className="hover:bg-gray-50/50">
+          <td className="sticky left-0 bg-white px-4 py-2 pl-8">
+            <button
+              onClick={() => toggleSide(sideKey)}
+              className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900"
+            >
+              {isOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+              {isSeller ? 'Säljarens sida' : 'Köparens sida'}
+              <span className="text-gray-400 font-normal">
+                {rows.length} {rows.length === 1 ? 'KS' : 'KS'}
+              </span>
+            </button>
+          </td>
+          {periods.map((p) => (
+            <td key={pKey(p.year, p.month)} className={cn(
+              'px-3 py-2 text-right tabular-nums',
+              isSeller ? 'text-gray-700' : 'text-gray-500',
+            )}>
+              {fmt(sideTotalForPeriod(line, cp, side, p))}
+            </td>
+          ))}
+          <td className="px-3 py-2 text-right font-medium tabular-nums text-gray-800 bg-gray-50">
+            {fmt(total)}
+          </td>
+        </tr>
+
+        {isOpen && rows.map((row) => (
+          <tr key={`${sideKey}:${row.costCenter.id}`} className="bg-gray-50/40">
+            <td className="sticky left-0 bg-gray-50/40 px-4 py-1 pl-14">
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-gray-400">{row.costCenter.code}</span>
+                <span className="text-gray-600 truncate">{row.costCenter.name}</span>
+                {row.locked && (
+                  <span title="Kostnadsstället är låst i scenariot" className="flex items-center gap-0.5 px-1 rounded text-amber-700 bg-amber-50 font-medium">
+                    <Lock size={9} />
+                    Låst
+                  </span>
+                )}
+              </div>
+            </td>
+            {periods.map((p) => {
+              const k = eKey(writeAccountId, row.costCenter.id, p.year, p.month, counterpart)
+              const value = cellValue(row.costCenter.id, p)
+              const editable = !row.locked && !isPastPeriod(p.year, p.month) && !ambiguous && hasScenario
+              return (
+                <td key={pKey(p.year, p.month)} className="px-1 py-0.5">
+                  {editable ? (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        key={`${k}:${value}`}
+                        defaultValue={fmtInput(value)}
+                        onBlur={(e) => {
+                          const next = parseSEK(e.target.value)
+                          if (next !== value) {
+                            writeCell(companyId, writeAccountId, row.costCenter.id, p.year, p.month, next, counterpart)
+                          }
+                          e.target.value = fmtInput(next)
+                        }}
+                        aria-label={`${MONTH_LABELS[p.month - 1]} ${p.year} ${row.costCenter.name}`}
+                        className="w-full px-2 py-1 text-right tabular-nums border border-transparent rounded hover:border-gray-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 focus:outline-none bg-transparent"
+                      />
+                      {savingKeys.has(k) && (
+                        <Loader2 size={9} className="animate-spin absolute right-0.5 top-1/2 -translate-y-1/2 text-brand-400" />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="px-2 py-1 text-right tabular-nums text-gray-400">{fmt(value)}</div>
+                  )}
+                </td>
+              )
+            })}
+            <td className="px-3 py-1 text-right tabular-nums text-gray-500 bg-gray-50">
+              {fmt(periods.reduce((s, p) => s + cellValue(row.costCenter.id, p), 0))}
+            </td>
+          </tr>
+        ))}
+
+        {isOpen && (
+          <tr className="bg-gray-50/40">
+            <td colSpan={colCount} className="px-4 py-1.5 pl-14">
+              {ambiguous ? (
+                <span className="text-gray-400">
+                  {cp.costAccounts.length} kopplade konton — beloppen visas summerade och måste matas
+                  in i budgetmatrisen per konto.
+                </span>
+              ) : !hasScenario ? (
+                <span className="text-amber-700">
+                  {companyName(companyId)} saknar ett scenario som heter {selectedName}.
+                </span>
+              ) : adding === sideKey ? (
+                <div className="flex items-center gap-2">
+                  <select
+                    autoFocus
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        addCostCenter(writeAccountId, counterpart, Number(e.target.value))
+                      }
+                    }}
+                    className="px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="">Välj kostnadsställe…</option>
+                    {available.map((c) => (
+                      <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => setAdding(null)} className="text-gray-400 hover:text-gray-600">
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAdding(sideKey)}
+                  disabled={available.length === 0}
+                  className="flex items-center gap-1 text-brand-600 hover:text-brand-700 font-medium disabled:text-gray-300"
+                >
+                  <Plus size={11} />
+                  Lägg till kostnadsställe
+                </button>
+              )}
+            </td>
+          </tr>
+        )}
+      </>
+    )
+  }
+
+  function sideTotalForPeriod(line: AccountLine, cp: CounterpartLine, side: 'seller' | 'buyer', p: Period) {
+    if (side === 'seller') {
+      return cp.sellerRows.reduce((s, r) => s + amountOf(line.accountId, r.costCenter.id, p, cp.companyId), 0)
+    }
+    return cp.buyerRows.reduce(
+      (s, r) =>
+        s + cp.costAccounts.reduce((t, c) => t + amountOf(c.id, r.costCenter.id, p, line.sellerCompanyId), 0),
+      0,
+    )
+  }
 
   return (
     <div className="p-8 max-w-full">
@@ -303,6 +632,19 @@ export default function IntercompanyPage() {
         </div>
         <HelpButton section="intercompany" />
       </div>
+
+      {saveError && (
+        <div className="flex items-start gap-2.5 px-4 py-3 mb-4 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium">Ändringen sparades inte</p>
+            <p className="mt-0.5 text-red-700">{describeSaveError(saveError)}</p>
+          </div>
+          <button onClick={() => setSaveError(null)} className="shrink-0 text-red-400 hover:text-red-700">
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex items-center gap-4 mb-5">
@@ -353,8 +695,8 @@ export default function IntercompanyPage() {
       <div className="space-y-2.5 mb-5">
         {!isAdmin && (
           <Notice tone="info">
-            Du ser bara de bolag din roll har tillgång till. Saknar du åtkomst till motpartsbolaget
-            visas dess sida som noll och allt ser ut att avvika.
+            Du ser och kan redigera de bolag din roll har tillgång till. Saknar du åtkomst till
+            motpartsbolaget visas dess sida som noll och allt ser ut att avvika.
           </Notice>
         )}
 
@@ -376,8 +718,8 @@ export default function IntercompanyPage() {
 
         {missingCounterpart > 0 && (
           <Notice tone="warn">
-            {missingCounterpart} budgetrader saknar motpart och kan inte stämmas av. Ange motpart i
-            budgetmatrisen.
+            {missingCounterpart} budgetposter saknar motpart och ingår inte i någon sida. Ange motpart
+            i budgetmatrisen.
           </Notice>
         )}
 
@@ -445,13 +787,16 @@ export default function IntercompanyPage() {
                     <table className="w-full text-xs min-w-max">
                       <thead>
                         <tr className="bg-white border-b border-gray-100">
-                          <th className="sticky left-0 bg-white px-4 py-2 text-left font-medium text-gray-500 w-64">
+                          <th className="sticky left-0 bg-white px-4 py-2 text-left font-medium text-gray-500 w-72">
                             Motpart
                           </th>
                           {periods.map((p) => (
                             <th
                               key={pKey(p.year, p.month)}
-                              className="px-3 py-2 text-right font-medium text-gray-500 w-24 min-w-[5rem]"
+                              className={cn(
+                                'px-3 py-2 text-right font-medium w-24 min-w-[5.5rem]',
+                                isPastPeriod(p.year, p.month) ? 'text-gray-400' : 'text-gray-500',
+                              )}
                             >
                               {MONTH_LABELS[p.month - 1]}
                               {periods.some((q) => q.year !== periods[0].year) ? ` ${p.year}` : ''}
@@ -466,10 +811,7 @@ export default function IntercompanyPage() {
                       {line.counterparts.map((cp) => (
                         <tbody key={cp.companyId} className="border-t border-gray-100">
                           <tr className="bg-gray-50/70">
-                            <td
-                              className="sticky left-0 bg-gray-50/70 px-4 py-2 font-medium text-brand-700"
-                              colSpan={1}
-                            >
+                            <td className="sticky left-0 bg-gray-50/70 px-4 py-2 font-medium text-brand-700">
                               → {companyName(cp.companyId)}
                             </td>
                             <td colSpan={periods.length} className="px-3 py-2 text-gray-400">
@@ -479,33 +821,8 @@ export default function IntercompanyPage() {
                             <td className="px-3 py-2 bg-gray-100"></td>
                           </tr>
 
-                          <tr className="hover:bg-gray-50/50">
-                            <td className="sticky left-0 bg-white px-4 py-2 pl-8 text-gray-600">
-                              Säljarens sida
-                            </td>
-                            {periods.map((p) => (
-                              <td key={pKey(p.year, p.month)} className="px-3 py-2 text-right tabular-nums text-gray-700">
-                                {fmt(cp.seller.get(pKey(p.year, p.month)) ?? 0)}
-                              </td>
-                            ))}
-                            <td className="px-3 py-2 text-right font-medium tabular-nums text-gray-800 bg-gray-50">
-                              {fmt(cp.sellerTotal)}
-                            </td>
-                          </tr>
-
-                          <tr className="hover:bg-gray-50/50">
-                            <td className="sticky left-0 bg-white px-4 py-2 pl-8 text-gray-600">
-                              Köparens sida
-                            </td>
-                            {periods.map((p) => (
-                              <td key={pKey(p.year, p.month)} className="px-3 py-2 text-right tabular-nums text-gray-500">
-                                {fmt(cp.buyer.get(pKey(p.year, p.month)) ?? 0)}
-                              </td>
-                            ))}
-                            <td className="px-3 py-2 text-right font-medium tabular-nums text-gray-600 bg-gray-50">
-                              {fmt(cp.buyerTotal)}
-                            </td>
-                          </tr>
+                          {renderSide(line, cp, 'seller')}
+                          {renderSide(line, cp, 'buyer')}
 
                           <tr className={cn('border-t', cp.balanced ? 'border-gray-200 bg-gray-50' : 'border-amber-200 bg-amber-50')}>
                             <td className={cn(
@@ -515,11 +832,12 @@ export default function IntercompanyPage() {
                               Netto
                             </td>
                             {periods.map((p) => {
-                              const k = pKey(p.year, p.month)
-                              const n = (cp.seller.get(k) ?? 0) + (cp.buyer.get(k) ?? 0)
+                              const n =
+                                sideTotalForPeriod(line, cp, 'seller', p) +
+                                sideTotalForPeriod(line, cp, 'buyer', p)
                               return (
                                 <td
-                                  key={k}
+                                  key={pKey(p.year, p.month)}
                                   className={cn(
                                     'px-3 py-2 text-right font-semibold tabular-nums',
                                     Math.abs(n) < 0.01 ? 'text-gray-300' : 'text-red-600',

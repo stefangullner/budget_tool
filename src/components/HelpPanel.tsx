@@ -335,8 +335,37 @@ export default function HelpPanel() {
                 <ChevronRight size={14} className="text-brand-500" /> Intercompany-avstämning
               </h3>
               <p className="mb-3">
-                Intercompany-vyn visar budgeterade belopp för konton markerade som IC, per bolag. Nettot för varje konto ska vara noll — annars är koncernens totaler felaktiga.
+                Ställer säljarens intäktskonto mot köparens kopplade kostnadskonto. Nettot för varje
+                koppling ska vara noll — annars är koncernens totaler felaktiga. Vilka konton som hör
+                ihop sätts upp under <strong>Admin → Internhandel</strong>; konton utan koppling ingår
+                inte i avstämningen och räknas upp överst.
               </p>
+
+              <h4 className="font-medium text-gray-800 mb-1.5">Redigera direkt i avstämningen</h4>
+              <p className="text-gray-600 mb-2">
+                Fäll ut <strong>Säljarens sida</strong> eller <strong>Köparens sida</strong> för att se
+                kostnadsställena bakom summan och skriva i dem. Beloppen sparas automatiskt och nettot
+                räknas om medan du skriver, så du ser direkt när sidorna går ihop.
+              </p>
+              <ul className="space-y-1.5 text-gray-600 mb-4">
+                <li>
+                  <strong>Lägg till kostnadsställe</strong> tar in ett KS som ännu inte har något belopp
+                  på kontot.
+                </li>
+                <li>
+                  Att redigera motpartens sida betyder att skriva i ett annat bolag. Saknar du behörighet
+                  där avvisas sparningen och du får ett meddelande — kontot ändras inte i smyg.
+                </li>
+                <li>
+                  Låsta kostnadsställen och passerade månader är skrivskyddade, precis som i
+                  budgetmatrisen.
+                </li>
+                <li>
+                  Har ett intäktskonto <em>flera</em> kopplade kostnadskonton hos samma köpare visas
+                  summan skrivskyddad — verktyget kan inte veta vilket av dem beloppet ska hamna på.
+                  Mata in det i budgetmatrisen.
+                </li>
+              </ul>
 
               <h4 className="font-medium text-gray-800 mb-1.5">Scenario-matchning</h4>
               <p className="text-gray-600 mb-4">
@@ -588,6 +617,7 @@ export default function HelpPanel() {
             </section>
 
             {/* ── ADMIN: INTERNHANDEL ── */}
+            {/* Redigering i avstämningen beskrivs i intercompany-avsnittet ovan */}
             <section id="help-admin-intercompany">
               <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <ChevronRight size={14} className="text-brand-500" /> Admin / Internhandel
