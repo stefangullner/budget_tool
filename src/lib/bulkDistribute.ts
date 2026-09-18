@@ -46,8 +46,8 @@ function splitEvenly(total: number, count: number): number[] {
 }
 
 export interface BulkPlanOptions {
+  /** Already narrowed to what the user ticked — sections and accounts alike. */
   groups: BulkGroup[]
-  selectedSections: Set<string>
   targets: BulkTarget[]
   futurePeriods: Period[]
   /** Current budget, so already-filled cells can be left alone. */
@@ -85,7 +85,6 @@ export interface BulkPlan {
  */
 export function buildBulkPlan({
   groups,
-  selectedSections,
   targets,
   futurePeriods,
   entries,
@@ -105,8 +104,6 @@ export function buildBulkPlan({
     let targetAccounts = 0
 
     for (const group of groups) {
-      if (!selectedSections.has(group.section)) continue
-
       for (const account of group.accounts) {
         const prev = futurePeriods.map(
           (p) => prevActuals.get(cellKey(target.id, p.year, p.month, account.id)) ?? 0,

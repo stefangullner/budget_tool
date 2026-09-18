@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2, Layers } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   buildBulkPlan,
@@ -50,7 +50,11 @@ export default function BulkDistributePanel({
   blockedReason,
   onApply,
 }: Props) {
-  const [deselected, setDeselected] = useState<Set<string>>(new Set())
+  // Both selections track what has been turned OFF rather than what is on, so a
+  // section or account that appears after the first render defaults to included.
+  const [deselectedSections, setDeselectedSections] = useState<Set<string>>(new Set())
+  const [deselectedAccounts, setDeselectedAccounts] = useState<Set<number>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [method, setMethod] = useState<BulkMethod>('copy')
   const [upliftInput, setUpliftInput] = useState('')
   const [mode, setMode] = useState<BulkMode>('skip')
@@ -58,18 +62,26 @@ export default function BulkDistributePanel({
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<number | null>(null)
 
-  // Track what has been turned OFF rather than what is on, so a section that
-  // appears after the first render defaults to included.
-  const selectedSections = useMemo(
-    () => new Set(groups.map((g) => g.section).filter((s) => !deselected.has(s))),
-    [groups, deselected],
-  )
-
   const factor = 1 + parsePercent(upliftInput) / 100
 
-  function toggleSection(section: string) {
-    setDone(null)
-    setDeselected((prev) => {
+  /** Exactly what a run would touch — the plan is built from this, not from `groups`. */
+  const selectedGroups = useMemo(
+    () =>
+      groups
+        .filter((g) => !deselectedSections.has(g.section))
+        .map((g) => ({
+          section: g.section,
+          accounts: g.accounts.filter((a) => !deselectedAccounts.has(a.id)),
+        }))
+        .filter((g) => g.accounts.length > 0),
+    [groups, deselectedSections, deselectedAccounts],
+  )
+
+  const selectedAccountCount = selectedGroups.reduce((s, g) => s + g.accounts.length, 0)
+  const totalAccountCount = groups.reduce((s, g) => s + g.accounts.length, 0)
+
+  function toggleExpanded(section: string) {
+    setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(section)) next.delete(section)
       else next.add(section)
@@ -77,11 +89,36 @@ export default function BulkDistributePanel({
     })
   }
 
+  /** Clicking a section clears it entirely, or restores it whole — including its accounts. */
+  function toggleSection(group: BulkGroup, fullySelected: boolean) {
+    setDone(null)
+    setDeselectedSections((prev) => {
+      const next = new Set(prev)
+      if (fullySelected) next.add(group.section)
+      else next.delete(group.section)
+      return next
+    })
+    setDeselectedAccounts((prev) => {
+      const next = new Set(prev)
+      for (const a of group.accounts) next.delete(a.id)
+      return next
+    })
+  }
+
+  function toggleAccount(accountId: number) {
+    setDone(null)
+    setDeselectedAccounts((prev) => {
+      const next = new Set(prev)
+      if (next.has(accountId)) next.delete(accountId)
+      else next.add(accountId)
+      return next
+    })
+  }
+
   const plan = useMemo(
     () =>
       buildBulkPlan({
-        groups,
-        selectedSections,
+        groups: selectedGroups,
         targets,
         futurePeriods,
         entries,
@@ -90,7 +127,7 @@ export default function BulkDistributePanel({
         mode,
         factor,
       }),
-    [groups, selectedSections, targets, futurePeriods, entries, prevActuals, method, mode, factor],
+    [selectedGroups, targets, futurePeriods, entries, prevActuals, method, mode, factor],
   )
 
   async function handleApply() {
@@ -117,7 +154,7 @@ export default function BulkDistributePanel({
         ? periodLabel(futurePeriods[0])
         : `${periodLabel(futurePeriods[0])} – ${periodLabel(futurePeriods[futurePeriods.length - 1])}`
 
-  const allSelected = selectedSections.size === groups.length
+  const allSelected = selectedAccountCount === totalAccountCount
   const touchedTargets = plan.perTarget.filter((t) => t.cells > 0).length
 
   return (
@@ -138,38 +175,113 @@ export default function BulkDistributePanel({
         {/* Sections */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-gray-700">Sektioner som ingår</p>
+            <p className="text-xs font-medium text-gray-700">
+              Konton som ingår
+              <span className="text-gray-400 font-normal">
+                {' '}— {selectedAccountCount} av {totalAccountCount}
+              </span>
+            </p>
             <button
               onClick={() => {
                 setDone(null)
-                setDeselected(allSelected ? new Set(groups.map((g) => g.section)) : new Set())
+                setDeselectedSections(allSelected ? new Set(groups.map((g) => g.section)) : new Set())
+                setDeselectedAccounts(new Set())
               }}
               className="text-xs text-brand-600 hover:text-brand-700 font-medium"
             >
               {allSelected ? 'Avmarkera alla' : 'Markera alla'}
             </button>
           </div>
-          <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-52 overflow-y-auto">
+          <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-72 overflow-y-auto">
             {groups.map((group) => {
-              const isOn = selectedSections.has(group.section)
+              const sectionOff = deselectedSections.has(group.section)
+              const picked = sectionOff
+                ? 0
+                : group.accounts.filter((a) => !deselectedAccounts.has(a.id)).length
+              const fullySelected = picked === group.accounts.length
+              const isOpen = expanded.has(group.section)
+
               return (
-                <label
-                  key={group.section}
-                  className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={isOn}
-                    onChange={() => toggleSection(group.section)}
-                    className="accent-brand-600"
-                  />
-                  <span className={cn('text-xs flex-1', isOn ? 'text-gray-800' : 'text-gray-400')}>
-                    {group.section}
-                  </span>
-                  <span className="text-xs text-gray-400 tabular-nums">
-                    {group.accounts.length} konton
-                  </span>
-                </label>
+                <div key={group.section}>
+                  <div className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
+                    <button
+                      onClick={() => toggleExpanded(group.section)}
+                      title={isOpen ? 'Dölj konton' : 'Visa konton'}
+                      className="text-gray-400 hover:text-gray-600 shrink-0"
+                    >
+                      {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                    </button>
+                    <input
+                      type="checkbox"
+                      checked={picked > 0}
+                      // Partly picked reads as neither on nor off
+                      ref={(el) => {
+                        if (el) el.indeterminate = picked > 0 && !fullySelected
+                      }}
+                      onChange={() => toggleSection(group, fullySelected)}
+                      className="accent-brand-600 shrink-0"
+                    />
+                    <span
+                      onClick={() => toggleExpanded(group.section)}
+                      className={cn(
+                        'text-xs flex-1 cursor-pointer',
+                        picked > 0 ? 'text-gray-800' : 'text-gray-400',
+                      )}
+                    >
+                      {group.section}
+                    </span>
+                    <span className="text-xs text-gray-400 tabular-nums">
+                      {fullySelected
+                        ? `${group.accounts.length} konton`
+                        : `${picked} av ${group.accounts.length} konton`}
+                    </span>
+                  </div>
+
+                  {isOpen && (
+                    <div className="bg-gray-50/60 border-t border-gray-100 divide-y divide-gray-100">
+                      {group.accounts.map((account) => {
+                        const on = !sectionOff && !deselectedAccounts.has(account.id)
+                        return (
+                          <label
+                            key={account.id}
+                            className="flex items-center gap-2.5 pl-10 pr-3 py-1.5 cursor-pointer hover:bg-gray-100/70"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => {
+                                // Ticking an account inside a cleared section brings the section back
+                                if (sectionOff) {
+                                  setDone(null)
+                                  setDeselectedSections((prev) => {
+                                    const next = new Set(prev)
+                                    next.delete(group.section)
+                                    return next
+                                  })
+                                  setDeselectedAccounts((prev) => {
+                                    const next = new Set(prev)
+                                    for (const a of group.accounts) next.add(a.id)
+                                    next.delete(account.id)
+                                    return next
+                                  })
+                                } else {
+                                  toggleAccount(account.id)
+                                }
+                              }}
+                              className="accent-brand-600 shrink-0"
+                            />
+                            <span className="font-mono text-xs text-gray-400 shrink-0">
+                              {account.account_number}
+                            </span>
+                            <span className={cn('text-xs flex-1 truncate', on ? 'text-gray-700' : 'text-gray-400')}>
+                              {account.name}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               )
             })}
             {groups.length === 0 && (
@@ -227,7 +339,7 @@ export default function BulkDistributePanel({
           <div className="space-y-2">
             {([
               ['skip', 'Lämna orörda', 'Skriver bara där det inte finns någon budget'],
-              ['overwrite', 'Skriv över', 'Ersätter befintlig budget i valda sektioner'],
+              ['overwrite', 'Skriv över', 'Ersätter befintlig budget på valda konton'],
             ] as [BulkMode, string, string][]).map(([value, label, desc]) => (
               <label key={value} className="flex items-start gap-2.5 cursor-pointer">
                 <input
@@ -249,7 +361,7 @@ export default function BulkDistributePanel({
             <div className="flex items-start gap-2 mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
               <span>
-                Befintlig budget i de valda sektionerna ersätts i samtliga valda kostnadsställen och
+                Befintlig budget på de valda kontona ersätts i samtliga valda kostnadsställen och
                 går inte att ångra.
               </span>
             </div>

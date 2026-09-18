@@ -494,7 +494,9 @@ export default function HelpPanel() {
               <h4 className="font-medium text-gray-800 mb-1.5">Inställningar</h4>
               <ul className="space-y-2 text-gray-600 mb-4">
                 <li>
-                  <strong>Sektioner</strong> — kryssa i vilka sektioner som ska ingå. Alla är förvalda.
+                  <strong>Konton som ingår</strong> — alla är förvalda. Kryssa ur en hel sektion, eller
+                  fäll ut den med pilen och kryssa ur enskilda konton. Rubriken visar hur många konton som
+                  är valda, och en delvis urkryssad sektion får en streckad kryssruta.
                 </li>
                 <li>
                   <strong>Följ utfallets månadsmönster</strong> — varje månad får sitt eget utfall, så säsongen
@@ -525,8 +527,8 @@ export default function HelpPanel() {
                   dem i budgetvyn först.
                 </li>
                 <li>
-                  Sektionerna och procentjusteringen gäller alla valda kostnadsställen lika. Behöver olika
-                  kostnadsställen olika påslag får du köra dem i omgångar.
+                  Kontourvalet och procentjusteringen gäller alla valda kostnadsställen lika. Behöver olika
+                  kostnadsställen olika påslag eller olika konton får du köra dem i omgångar.
                 </li>
                 <li>
                   En körning går inte att ångra. Använd <em>Lämna orörda</em> om budgetarbetet redan är igång.
