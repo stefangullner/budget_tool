@@ -468,8 +468,8 @@ export default function HelpPanel() {
                 <ChevronRight size={14} className="text-brand-500" /> Admin / Massfördelning
               </h3>
               <p className="mb-3">
-                Fyller alla budgeterbara konton på ett eller flera kostnadsställen i ett svep, utifrån samma
-                utfall som jämförelsekolumnen i budgetmatrisen visar. Verktyget är tänkt som startpunkt inför
+                Fyller alla budgeterbara konton på ett eller flera kostnadsställen i ett svep, utifrån
+                historiskt utfall. Verktyget är tänkt som startpunkt inför
                 budgetarbetet: skapa ett komplett utkast först, låt sedan budgetansvariga justera rad för rad.
                 Det ligger under Administration eftersom en körning kan påverka hela bolaget på en gång.
               </p>
@@ -478,6 +478,20 @@ export default function HelpPanel() {
                 <strong> Markera alla</strong> tar samtliga. Panelen nedanför visar vad som kommer att skrivas
                 innan något sparas.
               </p>
+              <h4 className="font-medium text-gray-800 mb-1.5">Utfall att utgå från</h4>
+              <p className="text-gray-600 mb-2">
+                <strong>Senaste 12 månaderna</strong> (förvalt) hämtar varje månad från den senaste gången
+                den faktiskt inträffade. Budgeterar du 2027 i september 2026 tas januari–augusti från 2026
+                och september–december från 2025.
+              </p>
+              <p className="text-gray-600 mb-4">
+                <strong>Scenariots jämförelseår</strong> följer i stället det som är inställt på scenariot,
+                alltså samma siffror som jämförelsekolumnen i budgetmatrisen visar. Det ger en konsekvent bild
+                mot matrisen, men månader som ännu inte passerat saknar utfall och blir tomma — sätt i så fall
+                ett äldre källår per månad under <strong>Admin → Scenarier</strong>.
+              </p>
+
+              <h4 className="font-medium text-gray-800 mb-1.5">Inställningar</h4>
               <ul className="space-y-2 text-gray-600 mb-4">
                 <li>
                   <strong>Sektioner</strong> — kryssa i vilka sektioner som ska ingå. Alla är förvalda.

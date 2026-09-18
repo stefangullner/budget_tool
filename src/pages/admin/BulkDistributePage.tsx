@@ -30,6 +30,14 @@ export default function BulkDistributePage() {
   const [prevActuals, setPrevActuals] = useState<Map<string, number>>(new Map())
   const [loadingEntries, setLoadingEntries] = useState(false)
   const [loadingPrev, setLoadingPrev] = useState(false)
+  /**
+   * Where the comparison actuals come from. The scenario's own comparison years
+   * follow the calendar, which leaves the months that have not happened yet
+   * empty — a 2027 budget would draw on 2026 and find nothing from September on.
+   * The rolling window instead ends at the last month that actually has data.
+   */
+  const [source, setSource] = useState<'rolling12' | 'scenario'>('rolling12')
+  const [latestActual, setLatestActual] = useState<{ year: number; month: number } | null>(null)
   const [userId, setUserId] = useState('')
   /** Bumped after a run so the "already budgeted" numbers reflect what was written. */
   const [reloadToken, setReloadToken] = useState(0)
@@ -54,7 +62,21 @@ export default function BulkDistributePage() {
     setAllAccounts([])
     setScenarioId(null)
     setSelectedIds(new Set())
+    setLatestActual(null)
     if (!companyId) return
+
+    // The newest month with actuals anchors the rolling window
+    supabase
+      .from('actuals')
+      .select('year, month')
+      .eq('company_id', companyId)
+      .order('year', { ascending: false })
+      .order('month', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        const row = data?.[0]
+        if (row) setLatestActual({ year: row.year as number, month: row.month as number })
+      })
 
     supabase
       .from('scenarios')
@@ -109,13 +131,44 @@ export default function BulkDistributePage() {
     return periods.filter((p) => !(p.year < y || (p.year === y && p.month < m)))
   }, [periods])
 
-  const comparisonLabel = useMemo(() => {
+  /** The 12 months ending at the newest actual, oldest first. */
+  const rollingWindow = useMemo(() => {
+    if (!latestActual) return null
+    const out: { year: number; month: number }[] = []
+    let { year, month } = latestActual
+    for (let i = 0; i < 12; i++) {
+      out.push({ year, month })
+      month--
+      if (month < 1) { month = 12; year-- }
+    }
+    return out.reverse()
+  }, [latestActual])
+
+  /** Source year per calendar month in the rolling window. */
+  const rollingByMonth = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const p of rollingWindow ?? []) map.set(p.month, p.year)
+    return map
+  }, [rollingWindow])
+
+  const useRolling = source === 'rolling12' && rollingWindow !== null
+
+  const rollingLabel = useMemo(() => {
+    if (!rollingWindow) return null
+    const first = rollingWindow[0]
+    const last = rollingWindow[rollingWindow.length - 1]
+    return `${MONTHS[first.month - 1]} ${first.year} – ${MONTHS[last.month - 1]} ${last.year}`
+  }, [rollingWindow])
+
+  const scenarioYearsLabel = useMemo(() => {
     if (!scenario || periods.length === 0) return '—'
     const years = [
       ...new Set(periods.map((p) => comparisonYearFor(scenario.comparison_periods, p.year, p.month))),
     ].sort()
     return years.length === 1 ? String(years[0]) : `${years[0]}–${years[years.length - 1]}`
   }, [scenario, periods])
+
+  const comparisonLabel = useRolling && rollingLabel ? rollingLabel : scenarioYearsLabel
 
   /**
    * The accounts a run can touch. Intercompany accounts are left out — their
@@ -198,10 +251,14 @@ export default function BulkDistributePage() {
     const accountIds = accountIdKey.split(',').map(Number)
     setLoadingPrev(true)
 
-    // Each month may draw its comparison from a different year (comparison_periods)
+    // Each month may draw its comparison from a different year — either from the
+    // rolling window or from the scenario's own comparison_periods
     const targetsBySource = new Map<string, { year: number; month: number }[]>()
     for (const { year, month } of futurePeriods) {
-      const sourceKey = periodKey(comparisonYearFor(scenario.comparison_periods, year, month), month)
+      const sourceYear = useRolling
+        ? rollingByMonth.get(month) ?? year - 1
+        : comparisonYearFor(scenario.comparison_periods, year, month)
+      const sourceKey = periodKey(sourceYear, month)
       const list = targetsBySource.get(sourceKey)
       if (list) list.push({ year, month })
       else targetsBySource.set(sourceKey, [{ year, month }])
@@ -238,7 +295,7 @@ export default function BulkDistributePage() {
     })
 
     return () => { cancelled = true }
-  }, [scenario, companyId, targetKey, accountIdKey, futurePeriods, reloadToken])
+  }, [scenario, companyId, targetKey, accountIdKey, futurePeriods, useRolling, rollingByMonth, reloadToken])
 
   /** The same accounts, grouped by section for the section filter. */
   const groups: BulkGroup[] = useMemo(() => {
@@ -332,6 +389,30 @@ export default function BulkDistributePage() {
             ))}
             {scenarios.length === 0 && <option value="">Inga scenarier för bolaget</option>}
           </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-gray-500 block mb-1.5">
+            Utfall att utgå från
+          </label>
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value as 'rolling12' | 'scenario')}
+            className={SELECT_CLASS}
+          >
+            <option value="rolling12" disabled={!rollingWindow}>
+              Senaste 12 månaderna{rollingLabel ? ` (${rollingLabel})` : ' — inget utfall hittat'}
+            </option>
+            <option value="scenario">
+              Scenariots jämförelseår ({scenarioYearsLabel}) — samma som budgetmatrisen
+            </option>
+          </select>
+          {useRolling && (
+            <p className="mt-1.5 text-xs text-gray-500">
+              Varje månad hämtas från den senaste gången den inträffade, så månader som ännu inte
+              passerat i år tas från föregående år.
+            </p>
+          )}
         </div>
 
         <div>
