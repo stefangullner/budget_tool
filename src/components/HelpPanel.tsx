@@ -15,6 +15,7 @@ const sections: { id: HelpSection; label: string }[] = [
   { id: 'admin-access',        label: 'Admin / Behörighetsöversikt' },
   { id: 'admin-cost-centers',  label: 'Admin / Kostnadsställen' },
   { id: 'admin-deadlines',     label: 'Admin / Deadlines' },
+  { id: 'admin-bulk',          label: 'Admin / Massfördelning' },
   { id: 'admin-sync',          label: 'Admin / Synkronisering' },
   { id: 'admin-export',        label: 'Admin / Export' },
 ]
@@ -204,37 +205,6 @@ export default function HelpPanel() {
                 <li><strong>Kopiera</strong> — Kopiera beloppen från ett annat KS eller scenario till denna rad.</li>
                 <li><strong>Procent</strong> — Öka eller minska alla månader med en procentsats.</li>
               </ul>
-
-              <h4 className="font-medium text-gray-800 mb-1.5">Massfördela hela kostnadsstället</h4>
-              <p className="text-gray-600 mb-2">
-                Knappen <strong>Massfördela</strong> överst i matrisen fyller alla budgeterbara konton på en gång,
-                utifrån samma utfall som jämförelsekolumnen visar. Den är tänkt som startpunkt: skapa ett komplett
-                utkast först, justera sedan rad för rad.
-              </p>
-              <ul className="space-y-2 text-gray-600 mb-4">
-                <li>
-                  <strong>Sektioner</strong> — kryssa i vilka sektioner som ska ingå. Bara sektioner din roll får
-                  redigera visas.
-                </li>
-                <li>
-                  <strong>Följ utfallets månadsmönster</strong> — varje månad får sitt eget utfall, så säsongen
-                  behålls. <strong>Jämna ut</strong> ger samma summa för perioden men lika stora månader.
-                </li>
-                <li>
-                  <strong>Justering i procent</strong> — ett påslag eller avdrag på utfallet, t.ex. <code>3</code>
-                  {' '}för +3 % eller <code>-2</code> för en sänkning.
-                </li>
-                <li>
-                  <strong>Redan ifyllda celler</strong> — <em>Lämna orörda</em> skriver bara där budgeten är tom,
-                  <em> Skriv över</em> ersätter det som finns. Överskrivning går inte att ångra.
-                </li>
-              </ul>
-              <p className="text-gray-600 mb-4">
-                Förhandsvisningen visar antal konton, antal celler och summa per sektion innan något sparas.
-                Endast framtida månader skrivs — passerade månader visar utfall och rörs aldrig. Konton utan
-                utfall att utgå från hoppas över och räknas upp under tabellen, liksom
-                internfaktureringskonton, som budgeteras per motpart och därför måste fyllas i manuellt.
-              </p>
 
               <h4 className="font-medium text-gray-800 mb-1.5">Kommentarer</h4>
               <p className="text-gray-600 mb-4">
@@ -489,6 +459,58 @@ export default function HelpPanel() {
               <ul className="space-y-1.5 text-gray-600">
                 <li><strong>Gul banner</strong> — deadline om 14 dagar eller färre.</li>
                 <li><strong>Röd banner</strong> — deadline har passerats.</li>
+              </ul>
+            </section>
+
+            {/* ── ADMIN: MASSFÖRDELNING ── */}
+            <section id="help-admin-bulk">
+              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <ChevronRight size={14} className="text-brand-500" /> Admin / Massfördelning
+              </h3>
+              <p className="mb-3">
+                Fyller alla budgeterbara konton på ett kostnadsställe i ett svep, utifrån samma utfall som
+                jämförelsekolumnen i budgetmatrisen visar. Verktyget är tänkt som startpunkt inför
+                budgetarbetet: skapa ett komplett utkast först, låt sedan budgetansvariga justera rad för rad.
+                Det ligger under Administration eftersom en körning påverkar hela kostnadsstället.
+              </p>
+              <p className="text-gray-600 mb-3">
+                Välj bolag, scenario och kostnadsställe överst. Panelen nedanför visar vad som kommer att
+                skrivas innan något sparas.
+              </p>
+              <ul className="space-y-2 text-gray-600 mb-4">
+                <li>
+                  <strong>Sektioner</strong> — kryssa i vilka sektioner som ska ingå. Alla är förvalda.
+                </li>
+                <li>
+                  <strong>Följ utfallets månadsmönster</strong> — varje månad får sitt eget utfall, så säsongen
+                  behålls. <strong>Jämna ut</strong> ger samma summa för perioden men lika stora månader.
+                </li>
+                <li>
+                  <strong>Justering i procent</strong> — ett påslag eller avdrag på utfallet, t.ex. <code>3</code>
+                  {' '}för +3 % eller <code>-2</code> för en sänkning.
+                </li>
+                <li>
+                  <strong>Redan ifyllda celler</strong> — <em>Lämna orörda</em> skriver bara där budgeten är tom,
+                  <em> Skriv över</em> ersätter det som finns.
+                </li>
+              </ul>
+              <p className="text-gray-600 mb-3">
+                Förhandsvisningen visar antal konton, antal celler och summa per sektion. Under tabellen
+                räknas konton som hoppas över för att de saknar utfall, och celler som lämnas orörda för att
+                de redan har en budget.
+              </p>
+              <ul className="space-y-1.5 text-gray-600">
+                <li>Endast framtida månader skrivs — passerade månader visar utfall och rörs aldrig.</li>
+                <li>
+                  Internfaktureringskonton ingår inte. De budgeteras per motpart och måste fyllas i manuellt
+                  i matrisen.
+                </li>
+                <li>
+                  Låsta kostnadsställen blockeras. Lås upp i budgetvyn först.
+                </li>
+                <li>
+                  En körning går inte att ångra. Använd <em>Lämna orörda</em> om budgetarbetet redan är igång.
+                </li>
               </ul>
             </section>
 

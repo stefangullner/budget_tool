@@ -19,6 +19,7 @@ import SyncPage from '@/pages/admin/SyncPage'
 import ExportPage from '@/pages/admin/ExportPage'
 import ImportPage from '@/pages/admin/ImportPage'
 import CompaniesPage from '@/pages/admin/CompaniesPage'
+import BulkDistributePage from '@/pages/admin/BulkDistributePage'
 
 export default function App() {
   const { session, loading, needsPasswordSet, clearPasswordSet } = useAuth()
@@ -59,6 +60,7 @@ export default function App() {
                 <Route path="cost-centers" element={<CostCentersPage />} />
                 <Route path="companies"    element={<CompaniesPage />} />
                 <Route path="deadlines"    element={<DeadlinesPage />} />
+                <Route path="bulk"         element={<BulkDistributePage />} />
                 <Route path="sync"         element={<SyncPage />} />
                 <Route path="import"       element={<ImportPage />} />
                 <Route path="export"       element={<ExportPage />} />

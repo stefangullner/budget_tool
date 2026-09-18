@@ -12,6 +12,7 @@ export type HelpSection =
   | 'admin-scenarios'
   | 'admin-cost-centers'
   | 'admin-deadlines'
+  | 'admin-bulk'
   | 'admin-sync'
   | 'admin-import'
   | 'admin-export'

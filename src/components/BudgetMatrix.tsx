@@ -1,9 +1,9 @@
 import { useRef, useCallback, Fragment, useState, useEffect, useMemo } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2, Layers, X } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
-import type { AccountRow, BulkCell } from '@/hooks/useBudget'
+import type { AccountRow } from '@/hooks/useBudget'
 import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
 import { comparisonYearFor } from '@/components/ComparisonYearPicker'
 import type { SectionPerms } from '@/hooks/useRoleSectionPermissions'
@@ -11,7 +11,6 @@ import type { Scenario, ScenarioLock, Company } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
 import CopyRowDialog from '@/components/CopyRowDialog'
 import PercentageDialog from '@/components/PercentageDialog'
-import BulkDistributeDialog, { type BulkGroup } from '@/components/BulkDistributeDialog'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
@@ -35,8 +34,6 @@ interface Props {
   sectionPerms?: SectionPerms
   onCellChange: (accountId: number, year: number, month: number, amount: number) => void
   onICCellChange: (accountId: number, counterpartId: number, year: number, month: number, amount: number) => void
-  /** Writes many cells in one go — used by the mass distribution over a whole KS. */
-  onBulkChange: (cells: BulkCell[]) => Promise<{ written: number; error: string | null }>
   onToggleLock: () => void
   saveError?: string | null
   onDismissSaveError?: () => void
@@ -123,7 +120,6 @@ export default function BudgetMatrix({
   sectionPerms,
   onCellChange,
   onICCellChange,
-  onBulkChange,
   onToggleLock,
   saveError,
   onDismissSaveError,
@@ -251,7 +247,6 @@ export default function BudgetMatrix({
   const [distributeTarget, setDistributeTarget] = useState<AccountRow | null>(null)
   const [copyTarget, setCopyTarget] = useState<AccountRow | null>(null)
   const [percentTarget, setPercentTarget] = useState<AccountRow | null>(null)
-  const [showBulk, setShowBulk] = useState(false)
   const [deviationEnabled, setDeviationEnabled] = useState(false)
   const [showActuals, setShowActuals] = useState(true)
   const [compact, setCompact] = useState(false)
@@ -260,21 +255,6 @@ export default function BudgetMatrix({
   const [commentDraft, setCommentDraft] = useState('')
 
   const futurePeriods = periods.filter((p) => !isPastPeriod(p.year, p.month))
-
-  /**
-   * What the mass distribution may write to: sections the role can edit, and
-   * within them the accounts that take a plain value. Intercompany accounts are
-   * left out — their amounts live on counterpart sub-rows, not on the account.
-   */
-  const bulkGroups: BulkGroup[] = grouped
-    .filter((g) => g.canEdit)
-    .map((g) => ({
-      section: g.section,
-      accounts: g.rows.filter((a) => isEditable(a) && a.config?.is_intercompany !== true),
-    }))
-    .filter((g) => g.accounts.length > 0)
-
-  const canBulkDistribute = !isLocked && futurePeriods.length > 0 && bulkGroups.length > 0
 
   const d: Density = compact ? DENSITY.compact : DENSITY.normal
 
@@ -456,16 +436,6 @@ export default function BudgetMatrix({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {canBulkDistribute && (
-            <button
-              onClick={() => setShowBulk(true)}
-              title="Fyll hela kostnadsstället utifrån utfallet"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors"
-            >
-              <Layers size={13} />
-              Massfördela
-            </button>
-          )}
           <button
             onClick={() => setCompact((v) => !v)}
             title={compact ? 'Normal radhöjd' : 'Kompakt läge — mindre text, fler månader synliga'}
@@ -1074,18 +1044,6 @@ export default function BudgetMatrix({
           </tbody>
         </table>
       </div>
-
-      {showBulk && (
-        <BulkDistributeDialog
-          groups={bulkGroups}
-          futurePeriods={futurePeriods}
-          entries={entries}
-          prevActuals={prevActuals}
-          comparisonLabel={comparisonLabel}
-          onApply={onBulkChange}
-          onClose={() => setShowBulk(false)}
-        />
-      )}
 
       {distributeTarget && (
         <DistributeDialog
