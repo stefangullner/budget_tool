@@ -1,6 +1,6 @@
 import { useState, ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Building2, ShieldCheck, LogOut, ArrowLeftRight, ChevronLeft, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Building2, ShieldCheck, LogOut, ArrowLeftRight, ChevronLeft, ChevronRight, Layers } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { cn } from '@/lib/utils'
@@ -17,6 +17,17 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { isAdmin } = useRole()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+
+  function linkClass(active: boolean) {
+    return cn(
+      'flex items-center rounded-lg text-sm transition-colors',
+      collapsed ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
+      active ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-600 hover:bg-gray-100',
+    )
+  }
+
+  // Mass distribution has its own entry, so it must not also light up "Administration"
+  const onBulk = location.pathname.startsWith('/admin/bulk')
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -53,11 +64,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 key={to}
                 to={to}
                 title={collapsed ? label : undefined}
-                className={cn(
-                  'flex items-center rounded-lg text-sm transition-colors',
-                  collapsed ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
-                  active ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-600 hover:bg-gray-100'
-                )}
+                className={linkClass(active)}
               >
                 <Icon size={16} className="shrink-0" />
                 {!collapsed && label}
@@ -76,16 +83,18 @@ export default function Layout({ children }: { children: ReactNode }) {
               <Link
                 to="/admin/users"
                 title={collapsed ? 'Administration' : undefined}
-                className={cn(
-                  'flex items-center rounded-lg text-sm transition-colors',
-                  collapsed ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
-                  location.pathname.startsWith('/admin')
-                    ? 'bg-brand-50 text-brand-700 font-medium'
-                    : 'text-gray-600 hover:bg-gray-100'
-                )}
+                className={linkClass(location.pathname.startsWith('/admin') && !onBulk)}
               >
                 <ShieldCheck size={16} className="shrink-0" />
                 {!collapsed && 'Administration'}
+              </Link>
+              <Link
+                to="/admin/bulk"
+                title={collapsed ? 'Massfördelning' : undefined}
+                className={linkClass(onBulk)}
+              >
+                <Layers size={16} className="shrink-0" />
+                {!collapsed && 'Massfördelning'}
               </Link>
             </>
           )}
