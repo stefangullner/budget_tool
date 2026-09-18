@@ -468,14 +468,15 @@ export default function HelpPanel() {
                 <ChevronRight size={14} className="text-brand-500" /> Admin / Massfördelning
               </h3>
               <p className="mb-3">
-                Fyller alla budgeterbara konton på ett kostnadsställe i ett svep, utifrån samma utfall som
-                jämförelsekolumnen i budgetmatrisen visar. Verktyget är tänkt som startpunkt inför
+                Fyller alla budgeterbara konton på ett eller flera kostnadsställen i ett svep, utifrån samma
+                utfall som jämförelsekolumnen i budgetmatrisen visar. Verktyget är tänkt som startpunkt inför
                 budgetarbetet: skapa ett komplett utkast först, låt sedan budgetansvariga justera rad för rad.
-                Det ligger under Administration eftersom en körning påverkar hela kostnadsstället.
+                Det ligger under Administration eftersom en körning kan påverka hela bolaget på en gång.
               </p>
               <p className="text-gray-600 mb-3">
-                Välj bolag, scenario och kostnadsställe överst. Panelen nedanför visar vad som kommer att
-                skrivas innan något sparas.
+                Välj bolag och scenario överst, kryssa sedan i de kostnadsställen som ska fyllas —
+                <strong> Markera alla</strong> tar samtliga. Panelen nedanför visar vad som kommer att skrivas
+                innan något sparas.
               </p>
               <ul className="space-y-2 text-gray-600 mb-4">
                 <li>
@@ -495,9 +496,9 @@ export default function HelpPanel() {
                 </li>
               </ul>
               <p className="text-gray-600 mb-3">
-                Förhandsvisningen visar antal konton, antal celler och summa per sektion. Under tabellen
-                räknas konton som hoppas över för att de saknar utfall, och celler som lämnas orörda för att
-                de redan har en budget.
+                Förhandsvisningen listar ett kostnadsställe per rad med antal konton, antal celler och summa.
+                Under tabellen räknas konton som hoppas över för att de saknar utfall, och celler som lämnas
+                orörda för att de redan har en budget.
               </p>
               <ul className="space-y-1.5 text-gray-600">
                 <li>Endast framtida månader skrivs — passerade månader visar utfall och rörs aldrig.</li>
@@ -506,7 +507,12 @@ export default function HelpPanel() {
                   i matrisen.
                 </li>
                 <li>
-                  Låsta kostnadsställen blockeras. Lås upp i budgetvyn först.
+                  Låsta kostnadsställen går inte att välja och märks <strong>Låst</strong> i listan. Lås upp
+                  dem i budgetvyn först.
+                </li>
+                <li>
+                  Sektionerna och procentjusteringen gäller alla valda kostnadsställen lika. Behöver olika
+                  kostnadsställen olika påslag får du köra dem i omgångar.
                 </li>
                 <li>
                   En körning går inte att ångra. Använd <em>Lämna orörda</em> om budgetarbetet redan är igång.
