@@ -51,6 +51,7 @@ export default function BudgetPage() {
     clearSaveError,
     upsertEntry,
     upsertICEntry,
+    bulkUpsertEntries,
     toggleLock,
   } = useBudget(selectedCompanyId, selectedScenarioId, selectedCostCenterId)
 
@@ -264,6 +265,7 @@ export default function BudgetPage() {
           onICCellChange={(accountId, counterpartId, year, month, amount) =>
             upsertICEntry(accountId, counterpartId, year, month, amount, userId)
           }
+          onBulkChange={(cells) => bulkUpsertEntries(cells, userId)}
           onToggleLock={() => toggleLock(selectedCostCenterId, userId)}
           saveError={saveError}
           onDismissSaveError={clearSaveError}

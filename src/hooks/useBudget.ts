@@ -10,6 +10,11 @@ type EntryRow = ActualRow & { counterpart_company_id: number | null }
 
 export type PeriodKey = `${number}-${number}` // "2026-1"
 
+/** One budget cell in a bulk write. Must be unique on (accountId, year, month) —
+ *  a repeated key makes Postgres reject the whole batch with
+ *  "ON CONFLICT DO UPDATE command cannot affect row a second time". */
+export type BulkCell = { accountId: number; year: number; month: number; amount: number }
+
 export function periodKey(year: number, month: number): PeriodKey {
   return `${year}-${month}`
 }
@@ -336,6 +341,56 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     })
   }
 
+  /**
+   * Write many cells at once (mass distribution over a whole cost center).
+   * Batched, because one KS × 12 months can be several thousand rows.
+   *
+   * A failed batch may land after earlier ones already committed, so recovery is
+   * a reload rather than an optimistic rollback — only the server knows what
+   * actually got written.
+   */
+  async function bulkUpsertEntries(
+    cells: BulkCell[],
+    userId: string,
+  ): Promise<{ written: number; error: string | null }> {
+    if (!scenarioId || !costCenterId || cells.length === 0) {
+      return { written: 0, error: null }
+    }
+
+    setEntries((prev) => {
+      const next = new Map(prev)
+      for (const c of cells) next.set(periodKey(c.year, c.month) + ':' + c.accountId, c.amount)
+      return next
+    })
+
+    const now = new Date().toISOString()
+    const payload = cells.map((c) => ({
+      scenario_id: scenarioId,
+      account_id: c.accountId,
+      cost_center_id: costCenterId,
+      year: c.year,
+      month: c.month,
+      amount: c.amount,
+      counterpart_company_id: null,
+      updated_by: userId,
+      updated_at: now,
+    }))
+
+    const BATCH = 500
+    for (let i = 0; i < payload.length; i += BATCH) {
+      const { error } = await supabase.from('budget_entries').upsert(payload.slice(i, i + BATCH), {
+        onConflict: 'scenario_id,account_id,cost_center_id,year,month,counterpart_company_id',
+      })
+      if (error) {
+        await loadEntries(scenarioId, costCenterId)
+        setSaveError(error.message)
+        return { written: i, error: error.message }
+      }
+    }
+
+    return { written: payload.length, error: null }
+  }
+
   async function toggleLock(costCenterId: number, userId: string) {
     if (!scenarioId) return
     const isLocked = locks.some((l) => l.cost_center_id === costCenterId)
@@ -448,6 +503,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     clearSaveError: () => setSaveError(null),
     upsertEntry,
     upsertICEntry,
+    bulkUpsertEntries,
     toggleLock,
     createScenario,
   }
