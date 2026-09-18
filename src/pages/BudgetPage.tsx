@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
-import { LayoutList, Table2, Clock, AlertTriangle } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { LayoutList, Table2, Clock, AlertTriangle, Rows3 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
+import { useAccountBudget } from '@/hooks/useAccountBudget'
 import { useRoleSectionPermissions } from '@/hooks/useRoleSectionPermissions'
+import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
 
 import BudgetMatrix from '@/components/BudgetMatrix'
 import BudgetOverview from '@/components/BudgetOverview'
+import AccountMatrix from '@/components/AccountMatrix'
 
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
@@ -17,10 +20,12 @@ export default function BudgetPage() {
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null)
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null)
 
-  const [view, setView] = useState<'matrix' | 'overview'>('matrix')
+  const [view, setView] = useState<'matrix' | 'overview' | 'account'>('matrix')
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [userId, setUserId] = useState<string>('')
 
   const sectionPerms = useRoleSectionPermissions()
+  const sectionOrderMap = useSectionOrder()
 
   useEffect(() => {
     supabase.from('companies').select('*').order('id').then(({ data }) => {
@@ -74,6 +79,50 @@ export default function BudgetPage() {
 
   const selectedScenario = scenarios.find((s) => s.id === selectedScenarioId) ?? null
 
+  /**
+   * Accounts the per-account view can show. Intercompany accounts are left out —
+   * their amounts live on counterpart sub-rows and get their own view.
+   */
+  const accountOptions = useMemo(() => {
+    const plain = accounts.filter((a) => a.config?.is_intercompany !== true)
+    const bySection = new Map<string, typeof plain>()
+    for (const a of plain) {
+      const section = a.config?.section ?? '— Ingen sektion'
+      if (!sectionPerms || sectionPerms.canView(section)) {
+        const list = bySection.get(section)
+        if (list) list.push(a)
+        else bySection.set(section, [a])
+      }
+    }
+    const named = sortSections(
+      [...bySection.keys()].filter((s) => s !== '— Ingen sektion'),
+      sectionOrderMap,
+    )
+    if (bySection.has('— Ingen sektion')) named.push('— Ingen sektion')
+    return named.map((section) => ({ section, accounts: bySection.get(section) ?? [] }))
+  }, [accounts, sectionPerms, sectionOrderMap])
+
+  const selectedAccount =
+    accounts.find((a) => a.id === selectedAccountId) ?? null
+
+  useEffect(() => {
+    setSelectedAccountId(null)
+  }, [selectedCompanyId])
+
+  useEffect(() => {
+    if (!selectedAccountId) {
+      const first = accountOptions[0]?.accounts[0]
+      if (first) setSelectedAccountId(first.id)
+    }
+  }, [accountOptions, selectedAccountId])
+
+  const accountBudget = useAccountBudget(
+    selectedCompanyId,
+    selectedScenarioId,
+    view === 'account' ? selectedAccountId : null,
+    selectedScenario,
+  )
+
   function formatScenarioPeriod(s: typeof scenarios[0]) {
     const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
     const start = `${months[s.start_month - 1]} ${s.start_year}`
@@ -89,7 +138,7 @@ export default function BudgetPage() {
           <p className="text-sm text-gray-500 mt-0.5">Mata in budget per konto och kostnadsställe</p>
         </div>
         <div className="flex items-center gap-2">
-          <HelpButton section="budget" />
+          <HelpButton section={view === 'account' ? 'budget-account' : 'budget'} />
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           <button
             onClick={() => setView('matrix')}
@@ -110,6 +159,17 @@ export default function BudgetPage() {
           >
             <LayoutList size={13} />
             Översikt
+          </button>
+          <button
+            onClick={() => setView('account')}
+            title="Ett konto i taget, fördelat över kostnadsställen"
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors',
+              view === 'account' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            <Rows3 size={13} />
+            Per konto
           </button>
         </div>
         </div>
@@ -153,23 +213,45 @@ export default function BudgetPage() {
           </div>
         </div>
 
-        {/* KS selector */}
-        <div className="flex-1 max-w-xs">
-          <label className="block text-xs font-medium text-gray-500 mb-1">Kostnadsställe</label>
-          <select
-            value={selectedCostCenterId ?? ''}
-            onChange={(e) => setSelectedCostCenterId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            {costCenters.length === 0 && <option value="">Inga kostnadsställen</option>}
-            {costCenters.map((ks) => (
-              <option key={ks.id} value={ks.id}>
-                {ks.code} — {ks.name}
-                {locks.some((l) => l.cost_center_id === ks.id) ? ' 🔒' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* KS selector — replaced by the account selector in the per-account view */}
+        {view === 'account' ? (
+          <div className="flex-1 max-w-md">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Konto</label>
+            <select
+              value={selectedAccountId ?? ''}
+              onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {accountOptions.length === 0 && <option value="">Inga budgeterbara konton</option>}
+              {accountOptions.map(({ section, accounts: group }) => (
+                <optgroup key={section} label={section}>
+                  {group.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.account_number} — {a.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="flex-1 max-w-xs">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Kostnadsställe</label>
+            <select
+              value={selectedCostCenterId ?? ''}
+              onChange={(e) => setSelectedCostCenterId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {costCenters.length === 0 && <option value="">Inga kostnadsställen</option>}
+              {costCenters.map((ks) => (
+                <option key={ks.id} value={ks.id}>
+                  {ks.code} — {ks.name}
+                  {locks.some((l) => l.cost_center_id === ks.id) ? ' 🔒' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Deadline banner */}
@@ -224,6 +306,43 @@ export default function BudgetPage() {
           />
         )
       )}
+
+      {/* Per account — one account across every cost center */}
+      {view === 'account' && (!selectedScenario || !selectedAccount ? (
+        <div className="text-center py-20 text-gray-400 text-sm">
+          {scenarios.length === 0
+            ? 'Skapa ett scenario för att börja budgetera.'
+            : accountOptions.length === 0
+              ? 'Inga budgeterbara konton du får se.'
+              : 'Välj ett scenario och ett konto.'}
+        </div>
+      ) : accountBudget.loading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-brand-600" />
+        </div>
+      ) : (
+        <AccountMatrix
+          scenario={selectedScenario}
+          account={selectedAccount}
+          costCenters={costCenters}
+          locks={locks}
+          entries={accountBudget.entries}
+          actuals={accountBudget.actuals}
+          prevActuals={accountBudget.prevActuals}
+          saving={accountBudget.saving}
+          canEdit={
+            sectionPerms
+              ? sectionPerms.canEdit(selectedAccount.config?.section ?? '— Ingen sektion')
+              : true
+          }
+          onCellChange={(costCenterId, year, month, amount) =>
+            accountBudget.upsertCell(costCenterId, year, month, amount, userId)
+          }
+          onAllocate={(cells) => accountBudget.writeCells(cells, userId)}
+          saveError={accountBudget.saveError}
+          onDismissSaveError={accountBudget.clearSaveError}
+        />
+      ))}
 
       {/* Matrix */}
       {view === 'matrix' && (!selectedScenario || !selectedCostCenterId ? (

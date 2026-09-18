@@ -2,6 +2,7 @@ import { useRef, useCallback, Fragment, useState, useEffect, useMemo } from 'rea
 import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { DENSITY, type Density } from '@/lib/density'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
 import type { AccountRow } from '@/hooks/useBudget'
 import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
@@ -60,32 +61,6 @@ function parseSEK(s: string): number {
   const n = parseFloat(cleaned)
   return isNaN(n) ? 0 : n
 }
-
-/** Row height / column width presets — "compact" fits more months on screen. */
-const DENSITY = {
-  normal: {
-    table: 'text-xs',
-    nameCol: 'w-56',
-    namePad: 'px-3',
-    cellPad: 'px-2',
-    budgetCol: 'w-24 min-w-[5.5rem]',
-    actualCol: 'w-20 min-w-[4.5rem]',
-    totalCol: 'w-28',
-    inputPad: 'px-2 py-1.5',
-  },
-  compact: {
-    table: 'text-[10.5px]',
-    nameCol: 'w-40',
-    namePad: 'px-2',
-    cellPad: 'px-1',
-    budgetCol: 'w-16 min-w-[3.75rem]',
-    actualCol: 'w-14 min-w-[3.25rem]',
-    totalCol: 'w-20',
-    inputPad: 'px-1 py-1',
-  },
-} as const
-
-type Density = (typeof DENSITY)[keyof typeof DENSITY]
 
 /** Read-only cell showing last year's actual next to the budget input. */
 function ActualCell({ value, pad, className }: { value: number; pad: string; className?: string }) {

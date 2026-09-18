@@ -8,6 +8,7 @@ const sections: { id: HelpSection; label: string }[] = [
   { id: 'budget',              label: 'Budget' },
   { id: 'budget-matrix',       label: '↳ Budgetmatris' },
   { id: 'budget-overview',     label: '↳ KS-översikt' },
+  { id: 'budget-account',      label: '↳ Per konto' },
   { id: 'accounts',            label: 'Konton' },
   { id: 'intercompany',        label: 'Intercompany' },
   { id: 'admin-users',         label: 'Admin / Användare' },
@@ -232,6 +233,55 @@ export default function HelpPanel() {
               </ul>
               <p className="text-gray-600">
                 Klicka på ett KS för att hoppa direkt till matrisvyn för det kostnadsdellet.
+              </p>
+            </section>
+
+            {/* ── PER KONTO ── */}
+            <section id="help-budget-account">
+              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <ChevronRight size={14} className="text-brand-500" /> Per konto
+              </h3>
+              <p className="mb-3">
+                Budgetmatrisen vänd på andra hållet: ett konto i taget, med kostnadsställena som rader.
+                Tänkt för den som äger en kostnadstyp — lokalhyra, försäkringar, marknadsföring — tvärs
+                över organisationen i stället för ett enskilt kostnadsställe. Välj konto i dropdownen där
+                kostnadsstället annars står.
+              </p>
+              <ul className="space-y-2 text-gray-600 mb-4">
+                <li>
+                  <strong>Rader grupperade på region</strong> — ihopfällbara med delsumma per region, på
+                  samma sätt som sektionerna i matrisen.
+                </li>
+                <li>
+                  <strong>Totalraden</strong> längst ner är kontots hela belopp, per månad och för året.
+                </li>
+                <li>
+                  <strong>Visar bara KS med utfall eller budget</strong> på kontot. Knappen
+                  {' '}<strong>Visa alla KS</strong> tar fram resten — använd den när du ska lägga in
+                  budget på ett kostnadsställe som inte haft kostnaden tidigare.
+                </li>
+                <li>
+                  <strong>Låsta kostnadsställen</strong> visas skrivskyddade med hänglås. De räknas med i
+                  summorna — lås upp i matrisvyn för att ändra.
+                </li>
+              </ul>
+
+              <h4 className="font-medium text-gray-800 mb-1.5">Fördela totalbelopp</h4>
+              <p className="text-gray-600 mb-2">
+                Ange vad kontot ska kosta totalt och låt verktyget slå ut beloppet över kostnadsställena.
+                Fördelningsnyckeln kan vara historiskt utfall, den budget som redan ligger inne, eller lika
+                delar. Inom varje kostnadsställe fördelas beloppet antingen efter utfallets månadsmönster
+                eller jämnt.
+              </p>
+              <p className="text-gray-600 mb-4">
+                Förhandsvisningen visar andel och belopp per kostnadsställe innan något sparas. Körningen
+                ersätter befintlig budget på kontot för de framtida månaderna och går inte att ångra. Låsta
+                kostnadsställen ingår inte.
+              </p>
+
+              <p className="text-gray-600">
+                Internfaktureringskonton finns inte i listan — deras belopp ligger per motpart och hör hemma
+                i <strong>Intercompany</strong>.
               </p>
             </section>
 

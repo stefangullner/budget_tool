@@ -5,6 +5,7 @@ export type HelpSection =
   | 'budget'
   | 'budget-matrix'
   | 'budget-overview'
+  | 'budget-account'
   | 'accounts'
   | 'intercompany'
   | 'admin-users'
