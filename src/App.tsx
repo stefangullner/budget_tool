@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import { useAuth } from '@/hooks/useAuth'
 import { HelpProvider } from '@/context/HelpContext'
 import LoginPage from '@/pages/LoginPage'
@@ -71,6 +72,7 @@ export default function App() {
           </AdminGuard>
         } />
       </Routes>
+      <SpeedInsights />
     </Layout>
     </HelpProvider>
   )
