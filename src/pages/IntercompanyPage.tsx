@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CheckCircle2, AlertTriangle, ChevronDown, ChevronRight, Info, Loader2, Lock, Plus, X,
+  CheckCircle2, AlertTriangle, ChevronDown, ChevronRight, Info, List, ListFilter, Loader2, Lock, X,
 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase, fetchAllRows } from '@/lib/supabase'
@@ -75,6 +75,8 @@ function describeSaveError(message: string) {
 interface SideRow {
   costCenter: CostCenter
   locked: boolean
+  /** Whether the cost center already carries an amount on this side. */
+  hasData: boolean
 }
 
 interface CounterpartLine {
@@ -107,7 +109,8 @@ export default function IntercompanyPage() {
   const [icAccounts, setIcAccounts] = useState<ICAccount[]>([])
   const [amounts, setAmounts] = useState<Map<string, number>>(new Map())
   const [presentRows, setPresentRows] = useState<Map<string, Set<number>>>(new Map())
-  const [addedRows, setAddedRows] = useState<Map<string, Set<number>>>(new Map())
+  /** Sides the user has expanded to every cost center, keyed by side. */
+  const [showAllRows, setShowAllRows] = useState<Set<string>>(new Set())
   const [lockedCostCenters, setLockedCostCenters] = useState<Set<number>>(new Set())
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set())
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -115,7 +118,6 @@ export default function IntercompanyPage() {
   const [onlyDiff, setOnlyDiff] = useState(false)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [openSides, setOpenSides] = useState<Set<string>>(new Set())
-  const [adding, setAdding] = useState<string | null>(null)
   const [userId, setUserId] = useState('')
 
   const { links, accounts: linkedAccounts, loading: loadingLinks } = useIntercompanyLinks()
@@ -274,15 +276,28 @@ export default function IntercompanyPage() {
       else costByRevenue.set(link.revenue_account_id, [cost])
     }
 
-    function rowsFor(accountIds: number[], companyId: number, counterpart: number): SideRow[] {
-      const ids = new Set<number>()
+    /**
+     * Cost centers with an amount, or — when the side is expanded, and by
+     * default while the side is still empty — every cost center in the company.
+     * An empty side would otherwise show nothing at all to type into.
+     */
+    function rowsFor(
+      accountIds: number[],
+      companyId: number,
+      counterpart: number,
+      sideKey: string,
+    ): SideRow[] {
+      const withData = new Set<number>()
       for (const accountId of accountIds) {
-        for (const cc of presentRows.get(`${accountId}:${counterpart}`) ?? []) ids.add(cc)
-        for (const cc of addedRows.get(`${accountId}:${counterpart}`) ?? []) ids.add(cc)
+        for (const cc of presentRows.get(`${accountId}:${counterpart}`) ?? []) withData.add(cc)
       }
-      return costCenters
-        .filter((c) => c.company_id === companyId && ids.has(c.id))
-        .map((c) => ({ costCenter: c, locked: lockedCostCenters.has(c.id) }))
+      const all = costCenters.filter((c) => c.company_id === companyId)
+      const showAll = showAllRows.has(sideKey) || withData.size === 0
+      return (showAll ? all : all.filter((c) => withData.has(c.id))).map((c) => ({
+        costCenter: c,
+        locked: lockedCostCenters.has(c.id),
+        hasData: withData.has(c.id),
+      }))
     }
 
     const out: AccountLine[] = []
@@ -299,8 +314,12 @@ export default function IntercompanyPage() {
 
       const counterparts: CounterpartLine[] = []
       for (const [companyId, costAccounts] of byCounterpart) {
-        const sellerRows = rowsFor([revenueId], revenue.company_id, companyId)
-        const buyerRows = rowsFor(costAccounts.map((c) => c.id), companyId, revenue.company_id)
+        const sellerRows = rowsFor(
+          [revenueId], revenue.company_id, companyId, `${revenueId}:${companyId}:seller`,
+        )
+        const buyerRows = rowsFor(
+          costAccounts.map((c) => c.id), companyId, revenue.company_id, `${revenueId}:${companyId}:buyer`,
+        )
 
         const sellerTotal = sellerRows.reduce(
           (sum, r) => sum + periods.reduce((s, p) => s + amountOf(revenueId, r.costCenter.id, p, companyId), 0),
@@ -343,7 +362,7 @@ export default function IntercompanyPage() {
     }
 
     return out.sort((a, b) => a.accountNumber.localeCompare(b.accountNumber, 'sv'))
-  }, [links, linkedAccounts, presentRows, addedRows, costCenters, lockedCostCenters, amounts, periods])
+  }, [links, linkedAccounts, presentRows, showAllRows, costCenters, lockedCostCenters, amounts, periods])
 
   // Auto-expand what needs attention
   useEffect(() => {
@@ -403,16 +422,13 @@ export default function IntercompanyPage() {
     })
   }
 
-  function addCostCenter(accountId: number, counterpart: number, costCenterId: number) {
-    const rowKey = `${accountId}:${counterpart}`
-    setAddedRows((prev) => {
-      const next = new Map(prev)
-      const set = new Set(next.get(rowKey) ?? [])
-      set.add(costCenterId)
-      next.set(rowKey, set)
+  function toggleShowAll(sideKey: string) {
+    setShowAllRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(sideKey)) next.delete(sideKey)
+      else next.add(sideKey)
       return next
     })
-    setAdding(null)
   }
 
   const linkedRevenueIds = useMemo(() => new Set(links.map((l) => l.revenue_account_id)), [links])
@@ -454,7 +470,7 @@ export default function IntercompanyPage() {
   const busy = loading || loadingLinks
   const colCount = 1 + periods.length + 1
 
-  /** Editable rows for one side, plus the control to bring in another cost center. */
+  /** Editable rows for one side, plus the control that widens the list. */
   function renderSide(
     line: AccountLine,
     cp: CounterpartLine,
@@ -472,9 +488,9 @@ export default function IntercompanyPage() {
     const ambiguous = !isSeller && cp.costAccounts.length > 1
     const total = isSeller ? cp.sellerTotal : cp.buyerTotal
     const hasScenario = scenarioByCompany.has(companyId)
-    const available = costCenters.filter(
-      (c) => c.company_id === companyId && !rows.some((r) => r.costCenter.id === c.id),
-    )
+    const totalCount = costCenters.filter((c) => c.company_id === companyId).length
+    const withDataCount = rows.filter((r) => r.hasData).length
+    const showingAll = rows.length === totalCount && totalCount > 0
 
     function cellValue(costCenterId: number, p: Period) {
       return readAccountIds.reduce((s, id) => s + amountOf(id, costCenterId, p, counterpart), 0)
@@ -491,7 +507,9 @@ export default function IntercompanyPage() {
               {isOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
               {isSeller ? 'Säljarens sida' : 'Köparens sida'}
               <span className="text-gray-400 font-normal">
-                {rows.length} {rows.length === 1 ? 'KS' : 'KS'}
+                {withDataCount > 0
+                  ? `${withDataCount} av ${totalCount} kostnadsställen`
+                  : `${totalCount} kostnadsställen`}
               </span>
             </button>
           </td>
@@ -512,8 +530,12 @@ export default function IntercompanyPage() {
           <tr key={`${sideKey}:${row.costCenter.id}`} className="bg-gray-50/40">
             <td className="sticky left-0 bg-gray-50/40 px-4 py-1 pl-14">
               <div className="flex items-center gap-1.5">
-                <span className="font-mono text-gray-400">{row.costCenter.code}</span>
-                <span className="text-gray-600 truncate">{row.costCenter.name}</span>
+                <span className={cn('font-mono', row.hasData ? 'text-gray-400' : 'text-gray-300')}>
+                  {row.costCenter.code}
+                </span>
+                <span className={cn('truncate', row.hasData ? 'text-gray-600' : 'text-gray-400')}>
+                  {row.costCenter.name}
+                </span>
                 {row.locked && (
                   <span title="Kostnadsstället är låst i scenariot" className="flex items-center gap-0.5 px-1 rounded text-amber-700 bg-amber-50 font-medium">
                     <Lock size={9} />
@@ -572,35 +594,19 @@ export default function IntercompanyPage() {
                 <span className="text-amber-700">
                   {companyName(companyId)} saknar ett scenario som heter {selectedName}.
                 </span>
-              ) : adding === sideKey ? (
-                <div className="flex items-center gap-2">
-                  <select
-                    autoFocus
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        addCostCenter(writeAccountId, counterpart, Number(e.target.value))
-                      }
-                    }}
-                    className="px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  >
-                    <option value="">Välj kostnadsställe…</option>
-                    {available.map((c) => (
-                      <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => setAdding(null)} className="text-gray-400 hover:text-gray-600">
-                    <X size={13} />
-                  </button>
-                </div>
+              ) : withDataCount === 0 ? (
+                <span className="text-gray-400">
+                  Inga belopp ännu — alla {totalCount} kostnadsställen visas
+                </span>
               ) : (
                 <button
-                  onClick={() => setAdding(sideKey)}
-                  disabled={available.length === 0}
-                  className="flex items-center gap-1 text-brand-600 hover:text-brand-700 font-medium disabled:text-gray-300"
+                  onClick={() => toggleShowAll(sideKey)}
+                  className="flex items-center gap-1 text-brand-600 hover:text-brand-700 font-medium"
                 >
-                  <Plus size={11} />
-                  Lägg till kostnadsställe
+                  {showingAll ? <ListFilter size={11} /> : <List size={11} />}
+                  {showingAll
+                    ? `Visa bara de ${withDataCount} med belopp`
+                    : `Visa alla ${totalCount} kostnadsställen`}
                 </button>
               )}
             </td>
