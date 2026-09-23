@@ -6,7 +6,14 @@ import type { Scenario, Account, AccountConfig, CostCenter, BudgetEntry, Scenari
 export type AccountRow = Account & { config: AccountConfig | null }
 
 type ActualRow = { account_id: number; year: number; month: number; amount: number }
-type EntryRow = ActualRow & { counterpart_company_id: number | null }
+type EntryRow = ActualRow & {
+  counterpart_company_id: number | null
+  updated_by: string | null
+  updated_at: string | null
+}
+
+/** Who last touched a cell, and when. */
+export type EntryMeta = { by: string | null; at: string | null }
 
 export type PeriodKey = `${number}-${number}` // "2026-1"
 
@@ -31,6 +38,8 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
   const [allAccounts, setAllAccounts] = useState<AccountRow[]>([])
   const [entries, setEntries] = useState<Map<string, number>>(new Map())
+  const [entryMeta, setEntryMeta] = useState<Map<string, EntryMeta>>(new Map())
+  const [userNames, setUserNames] = useState<Map<string, string>>(new Map())
   const [icEntries, setIcEntries] = useState<Map<string, number>>(new Map())
   const [actuals, setActuals] = useState<Map<string, number>>(new Map())
   const [prevActuals, setPrevActuals] = useState<Map<string, number>>(new Map())
@@ -113,7 +122,7 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     const data = await fetchAllRows<EntryRow>((from, to) =>
       supabase
         .from('budget_entries')
-        .select('account_id, year, month, amount, counterpart_company_id')
+        .select('account_id, year, month, amount, counterpart_company_id, updated_by, updated_at')
         .eq('scenario_id', scenarioId)
         .eq('cost_center_id', costCenterId)
         .order('account_id')
@@ -124,16 +133,31 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
 
     const map = new Map<string, number>()
     const icMap = new Map<string, number>()
+    const metaMap = new Map<string, EntryMeta>()
     for (const row of data) {
       if (row.counterpart_company_id) {
         icMap.set(periodKey(row.year, row.month) + ':' + row.account_id + ':' + row.counterpart_company_id, row.amount)
       } else {
-        map.set(periodKey(row.year, row.month) + ':' + row.account_id, row.amount)
+        const key = periodKey(row.year, row.month) + ':' + row.account_id
+        map.set(key, row.amount)
+        metaMap.set(key, { by: row.updated_by, at: row.updated_at })
       }
     }
     setEntries(map)
     setIcEntries(icMap)
+    setEntryMeta(metaMap)
     setLoading(false)
+
+    // Names for the "changed by" tooltip. A failure here only costs the name,
+    // so the id is kept as a fallback rather than blocking the matrix.
+    const userIds = [...new Set(data.map((r) => r.updated_by).filter((id): id is string => !!id))]
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('user_id, display_name')
+        .in('user_id', userIds)
+      setUserNames(new Map((profiles ?? []).map((p) => [p.user_id as string, p.display_name as string])))
+    }
   }, [])
 
   const loadActuals = useCallback(async (companyId: number, costCenterId: number, scenario: Scenario) => {
@@ -280,6 +304,10 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
         return next
       })
       setSaveError(error.message)
+    } else {
+      setEntryMeta((prev) =>
+        new Map(prev).set(key, { by: userId, at: new Date().toISOString() }),
+      )
     }
 
     setSaving((prev) => {
@@ -421,9 +449,19 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
             updated_by: userId,
           }))
 
+        // Scenariot är redan skapat här. Failar en batch är kopieringen ofullständig,
+        // och det måste synas — annars ser ett halvtomt scenario ut som ett tomt.
         const BATCH = 500
         for (let i = 0; i < toInsert.length; i += BATCH) {
-          await supabase.from('budget_entries').insert(toInsert.slice(i, i + BATCH))
+          const { error: copyError } = await supabase
+            .from('budget_entries')
+            .insert(toInsert.slice(i, i + BATCH))
+          if (copyError) {
+            setSaveError(
+              `Scenariot skapades, men kopieringen avbröts efter ${i} av ${toInsert.length} rader: ${copyError.message}`,
+            )
+            break
+          }
         }
       }
     }
@@ -437,6 +475,8 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     accounts,
     actualOnlyAccounts,
     entries,
+    entryMeta,
+    userNames,
     icEntries,
     actuals,
     prevActuals,

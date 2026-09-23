@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Calendar, Check } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 import { supabase } from '@/lib/supabase'
+import { useWriteGuard } from '@/lib/writes'
 import { cn } from '@/lib/utils'
 import type { Company, Scenario } from '@/types'
 
 export default function DeadlinesPage() {
+  const { error: writeError, clearError: clearWriteError, run } = useWriteGuard()
   const [companies, setCompanies] = useState<Company[]>([])
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
   const [scenarios, setScenarios] = useState<Scenario[]>([])
@@ -32,10 +35,14 @@ export default function DeadlinesPage() {
 
   async function setDeadline(scenarioId: number, date: string | null) {
     setSaving((prev) => new Set(prev).add(scenarioId))
-    await supabase.from('scenarios').update({ deadline_date: date }).eq('id', scenarioId)
-    setScenarios((prev) =>
-      prev.map((s) => (s.id === scenarioId ? { ...s, deadline_date: date } : s)),
+    const ok = await run(
+      supabase.from('scenarios').update({ deadline_date: date }).eq('id', scenarioId),
     )
+    if (ok) {
+      setScenarios((prev) =>
+        prev.map((s) => (s.id === scenarioId ? { ...s, deadline_date: date } : s)),
+      )
+    }
     setSaving((prev) => { const next = new Set(prev); next.delete(scenarioId); return next })
   }
 
@@ -67,6 +74,8 @@ export default function DeadlinesPage() {
         <HelpButton section="admin-deadlines" />
       </div>
       <p className="text-sm text-gray-500 mb-6">Sätt deadline per scenario — visas som varningsbanner för budgetansvariga</p>
+
+      <SaveErrorBanner message={writeError} onDismiss={clearWriteError} className="mb-5" />
 
       {/* Company tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">

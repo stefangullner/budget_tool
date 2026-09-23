@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useWriteGuard } from '@/lib/writes'
 import type { Scenario, ScenarioLock, CostCenter } from '@/types'
 
 export type ScenarioWithStats = Scenario & {
@@ -16,6 +17,7 @@ export function useAdminScenarios(companyId: number | null) {
   const [scenarios, setScenarios] = useState<ScenarioWithStats[]>([])
   const [loading, setLoading] = useState(false)
   const [tick, setTick] = useState(0)
+  const { error, clearError, run } = useWriteGuard()
 
   const refetch = useCallback(() => setTick((t) => t + 1), [])
 
@@ -67,22 +69,30 @@ export function useAdminScenarios(companyId: number | null) {
     })) as LockDetail[]
   }
 
+  // State uppdateras först när skrivningen faktiskt gått igenom — annars ser en
+  // nekad ändring lyckad ut tills sidan laddas om
   async function renameScenario(id: number, name: string) {
-    await supabase.from('scenarios').update({ name }).eq('id', id)
+    if (!(await run(supabase.from('scenarios').update({ name }).eq('id', id)))) return
     setScenarios((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)))
   }
 
   async function toggleApprove(id: number, current: boolean) {
-    await supabase.from('scenarios').update({ is_approved: !current }).eq('id', id)
+    const ok = await run(
+      supabase.from('scenarios').update({ is_approved: !current }).eq('id', id),
+    )
+    if (!ok) return
     setScenarios((prev) =>
       prev.map((s) => (s.id === id ? { ...s, is_approved: !current } : s)),
     )
   }
 
   async function deleteScenario(id: number) {
-    await supabase.from('scenarios').delete().eq('id', id)
+    if (!(await run(supabase.from('scenarios').delete().eq('id', id)))) return
     setScenarios((prev) => prev.filter((s) => s.id !== id))
   }
 
-  return { scenarios, loading, refetch, renameScenario, toggleApprove, deleteScenario, loadLockDetails }
+  return {
+    scenarios, loading, refetch, renameScenario, toggleApprove, deleteScenario, loadLockDetails,
+    writeError: error, clearWriteError: clearError,
+  }
 }

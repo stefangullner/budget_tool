@@ -4,6 +4,7 @@ import {
   Pencil, Check, X, Trash2, Plus, Lock
 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 import { supabase, fetchAllRows } from '@/lib/supabase'
 import { useAdminScenarios, type LockDetail } from '@/hooks/useAdminScenarios'
 import NewScenarioDialog from '@/components/NewScenarioDialog'
@@ -53,9 +54,13 @@ export default function ScenariosAdminPage() {
   // Optimistic copies so the picker stays responsive while the write is in flight
   const [comparisonDrafts, setComparisonDrafts] = useState<Map<number, ComparisonPeriods>>(new Map())
   const [savingComparisonId, setSavingComparisonId] = useState<number | null>(null)
+  /** Fel från skrivningar som sker i sidan, inte i useAdminScenarios. */
+  const [localWriteError, setLocalWriteError] = useState<string | null>(null)
 
-  const { scenarios, loading, refetch, renameScenario, toggleApprove, deleteScenario, loadLockDetails } =
-    useAdminScenarios(selectedCompanyId)
+  const {
+    scenarios, loading, refetch, renameScenario, toggleApprove, deleteScenario, loadLockDetails,
+    writeError, clearWriteError,
+  } = useAdminScenarios(selectedCompanyId)
 
   useEffect(() => {
     supabase.from('companies').select('*').order('id').then(({ data }) => {
@@ -76,11 +81,12 @@ export default function ScenariosAdminPage() {
   async function saveComparisonPeriods(scenarioId: number, next: ComparisonPeriods) {
     setComparisonDrafts((prev) => new Map(prev).set(scenarioId, next))
     setSavingComparisonId(scenarioId)
-    await supabase
+    const { error } = await supabase
       .from('scenarios')
       .update({ comparison_periods: Object.keys(next).length > 0 ? next : null })
       .eq('id', scenarioId)
     setSavingComparisonId(null)
+    if (error) { setLocalWriteError(error.message); return }
     await refetch()
   }
 
@@ -141,9 +147,19 @@ export default function ScenariosAdminPage() {
           counterpart_company_id: e.counterpart_company_id ?? null,
           updated_by: userId,
         }))
+        // Scenariot finns redan. En avbruten kopiering ger ett halvfyllt scenario
+        // som annars inte går att skilja från ett tomt.
         const BATCH = 500
         for (let i = 0; i < toInsert.length; i += BATCH) {
-          await supabase.from('budget_entries').insert(toInsert.slice(i, i + BATCH))
+          const { error } = await supabase
+            .from('budget_entries')
+            .insert(toInsert.slice(i, i + BATCH))
+          if (error) {
+            setLocalWriteError(
+              `Scenariot skapades, men kopieringen avbröts efter ${i} av ${toInsert.length} rader: ${error.message}`,
+            )
+            break
+          }
         }
       }
     }))
@@ -169,6 +185,13 @@ export default function ScenariosAdminPage() {
           </button>
         </div>
       </div>
+
+      <SaveErrorBanner message={writeError} onDismiss={clearWriteError} className="mb-5" />
+      <SaveErrorBanner
+        message={localWriteError}
+        onDismiss={() => setLocalWriteError(null)}
+        className="mb-5"
+      />
 
       {/* Company tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">

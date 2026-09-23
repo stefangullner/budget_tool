@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import { Check, X, Clock, ArrowLeftRight, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 import { supabase, fetchAllRows } from '@/lib/supabase'
+import { useWriteGuard } from '@/lib/writes'
 import { cn } from '@/lib/utils'
 import type { Company, Account, AccountConfig } from '@/types'
 
@@ -24,6 +26,7 @@ export default function AccountConfigPage() {
   const [filterType, setFilterType] = useState<string>('all')
   const [filterBudgetable, setFilterBudgetable] = useState<string>('all')
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const { error: writeError, clearError: clearWriteError, run } = useWriteGuard()
 
   useEffect(() => {
     supabase.from('companies').select('*').order('id').then(({ data }) => {
@@ -83,19 +86,20 @@ export default function AccountConfigPage() {
     const config = account.config
     const newVal = !(config?.is_budgetable ?? false)
 
-    if (config) {
-      await supabase
-        .from('account_configs')
-        .update({ is_budgetable: newVal })
-        .eq('account_id', account.id)
-    } else {
-      await supabase.from('account_configs').insert({
-        account_id: account.id,
-        is_budgetable: newVal,
-        is_calculated: false,
-        display_order: 0,
-      })
-    }
+    const ok = await run(
+      config
+        ? supabase
+            .from('account_configs')
+            .update({ is_budgetable: newVal })
+            .eq('account_id', account.id)
+        : supabase.from('account_configs').insert({
+            account_id: account.id,
+            is_budgetable: newVal,
+            is_calculated: false,
+            display_order: 0,
+          }),
+    )
+    if (!ok) return
 
     setAccounts((prev) =>
       prev.map((a) =>
@@ -109,11 +113,12 @@ export default function AccountConfigPage() {
   async function toggleIntercompany(account: AccountRow) {
     const config = account.config
     const newVal = !(config?.is_intercompany === true)
-    if (config) {
-      await supabase.from('account_configs').update({ is_intercompany: newVal }).eq('account_id', account.id)
-    } else {
-      await supabase.from('account_configs').insert({ account_id: account.id, is_budgetable: false, is_calculated: false, display_order: 0, is_intercompany: newVal })
-    }
+    const ok = await run(
+      config
+        ? supabase.from('account_configs').update({ is_intercompany: newVal }).eq('account_id', account.id)
+        : supabase.from('account_configs').insert({ account_id: account.id, is_budgetable: false, is_calculated: false, display_order: 0, is_intercompany: newVal }),
+    )
+    if (!ok) return
     setAccounts(prev =>
       prev.map(a =>
         a.id === account.id
@@ -135,7 +140,10 @@ export default function AccountConfigPage() {
       is_calculated: false,
       display_order: 0,
     }))
-    await supabase.from('account_configs').upsert(upserts, { onConflict: 'account_id' })
+    const ok = await run(
+      supabase.from('account_configs').upsert(upserts, { onConflict: 'account_id' }),
+    )
+    if (!ok) return
 
     setAccounts(prev =>
       prev.map(a =>
@@ -148,20 +156,21 @@ export default function AccountConfigPage() {
 
   async function updateSection(account: AccountRow, section: string) {
     const config = account.config
-    if (config) {
-      await supabase
-        .from('account_configs')
-        .update({ section: section || null })
-        .eq('account_id', account.id)
-    } else {
-      await supabase.from('account_configs').insert({
-        account_id: account.id,
-        is_budgetable: false,
-        is_calculated: false,
-        display_order: 0,
-        section: section || null,
-      })
-    }
+    const ok = await run(
+      config
+        ? supabase
+            .from('account_configs')
+            .update({ section: section || null })
+            .eq('account_id', account.id)
+        : supabase.from('account_configs').insert({
+            account_id: account.id,
+            is_budgetable: false,
+            is_calculated: false,
+            display_order: 0,
+            section: section || null,
+          }),
+    )
+    if (!ok) return
     setAccounts((prev) =>
       prev.map((a) =>
         a.id === account.id
@@ -230,6 +239,8 @@ export default function AccountConfigPage() {
           )}
         </div>
       </div>
+
+      <SaveErrorBanner message={writeError} onDismiss={clearWriteError} className="mb-5" />
 
       {/* Company tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">

@@ -45,6 +45,8 @@ export default function BudgetPage() {
     accounts,
     actualOnlyAccounts,
     entries,
+    entryMeta,
+    userNames,
     icEntries,
     actuals,
     prevActuals,
@@ -367,6 +369,8 @@ export default function BudgetPage() {
           actualOnlyAccounts={actualOnlyAccounts}
           sectionPerms={sectionPerms}
           entries={entries}
+          entryMeta={entryMeta}
+          userNames={userNames}
           icEntries={icEntries}
           actuals={actuals}
           prevActuals={prevActuals}

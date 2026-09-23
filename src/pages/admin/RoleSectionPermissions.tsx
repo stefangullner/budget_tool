@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 import { supabase } from '@/lib/supabase'
+import { useWriteGuard } from '@/lib/writes'
 import { sortSections } from '@/hooks/useSectionOrder'
 import { useRoles } from '@/hooks/useRoles'
 import { cn } from '@/lib/utils'
@@ -24,6 +26,7 @@ const SCOPE_LABELS: Record<RoleDefinition['scope_type'], string> = {
 
 export default function RoleSectionPermissions() {
   const { roles, createRole, deleteRole } = useRoles()
+  const { error: writeError, clearError: clearWriteError, run } = useWriteGuard()
   const [sections, setSections] = useState<string[]>([])
   const [permsByRole, setPermsByRole] = useState<Map<string, PermMap>>(new Map())
   const [saving, setSaving] = useState<Set<string>>(new Set())
@@ -76,17 +79,21 @@ export default function RoleSectionPermissions() {
     const key = `${role}:${section}`
     setSaving((prev) => new Set(prev).add(key))
 
-    if (!updated.can_view && !updated.can_edit) {
-      await supabase
-        .from('role_section_permissions')
-        .delete()
-        .eq('role', role)
-        .eq('section_name', section)
-    } else {
-      await supabase.from('role_section_permissions').upsert(
-        { role, section_name: section, can_view: updated.can_view, can_edit: updated.can_edit },
-        { onConflict: 'role,section_name' },
-      )
+    const ok = await run(
+      !updated.can_view && !updated.can_edit
+        ? supabase
+            .from('role_section_permissions')
+            .delete()
+            .eq('role', role)
+            .eq('section_name', section)
+        : supabase.from('role_section_permissions').upsert(
+            { role, section_name: section, can_view: updated.can_view, can_edit: updated.can_edit },
+            { onConflict: 'role,section_name' },
+          ),
+    )
+    if (!ok) {
+      setSaving((prev) => { const next = new Set(prev); next.delete(key); return next })
+      return
     }
 
     setPermsByRole((prev) => {
@@ -128,6 +135,7 @@ export default function RoleSectionPermissions() {
 
   return (
     <div className="mt-10 pt-8 border-t border-gray-200">
+      <SaveErrorBanner message={writeError} onDismiss={clearWriteError} className="mb-4" />
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Sektionsbehörigheter per roll</h2>

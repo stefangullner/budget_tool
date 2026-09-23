@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Trash2, Plus, X, UserPlus, Shield, Building2, MapPin, Users, Globe } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 import { supabase } from '@/lib/supabase'
+import { useWriteGuard } from '@/lib/writes'
 import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
 import { useRoles } from '@/hooks/useRoles'
@@ -50,6 +52,7 @@ function RoleBadge({ role, label }: { role: string; label: string }) {
 
 export default function UsersPage() {
   const { roles: roleDefinitions } = useRoles()
+  const { error: writeError, clearError: clearWriteError, run } = useWriteGuard()
   const [users, setUsers] = useState<UserData[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
@@ -153,7 +156,7 @@ export default function UsersPage() {
 
   async function removeRole(roleId: number) {
     if (!editingUser) return
-    await supabase.from('user_roles').delete().eq('id', roleId)
+    if (!(await run(supabase.from('user_roles').delete().eq('id', roleId)))) return
     const updated = { ...editingUser, roles: editingUser.roles.filter(r => r.id !== roleId) }
     setEditingUser(updated)
     setUsers(prev => prev.map(u => u.id === editingUser.id ? updated : u))
@@ -213,6 +216,7 @@ export default function UsersPage() {
 
   return (
     <div className="p-8 max-w-5xl">
+      <SaveErrorBanner message={writeError} onDismiss={clearWriteError} className="mb-5" />
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Användare</h1>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Check, X, Pencil, Trash2, Plus } from 'lucide-react'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 import { supabase } from '@/lib/supabase'
+import { useWriteGuard } from '@/lib/writes'
 import type { Company } from '@/types'
 
 const MONTHS = ['Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni',
@@ -11,6 +13,7 @@ const EMPTY: NewCompany = { name: '', org_number: '', fiscal_year_start: '1', fa
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([])
+  const { error: writeError, clearError: clearWriteError, run } = useWriteGuard()
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -34,9 +37,10 @@ export default function CompaniesPage() {
   async function commitEdit(id: number) {
     const trimmed = editValue.trim() || null
     setSaving(true)
-    await supabase.from('companies').update({ fabric_key: trimmed }).eq('id', id)
-    setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, fabric_key: trimmed } : c)))
+    const ok = await run(supabase.from('companies').update({ fabric_key: trimmed }).eq('id', id))
     setSaving(false)
+    if (!ok) return
+    setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, fabric_key: trimmed } : c)))
     setEditingId(null)
   }
 
@@ -62,7 +66,7 @@ export default function CompaniesPage() {
   }
 
   async function handleDelete(id: number) {
-    await supabase.from('companies').delete().eq('id', id)
+    if (!(await run(supabase.from('companies').delete().eq('id', id)))) return
     setCompanies((prev) => prev.filter((c) => c.id !== id))
     setConfirmDeleteId(null)
   }
@@ -71,6 +75,7 @@ export default function CompaniesPage() {
 
   return (
     <div className="p-8 max-w-3xl">
+      <SaveErrorBanner message={writeError} onDismiss={clearWriteError} className="mb-5" />
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Bolag</h2>

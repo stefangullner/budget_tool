@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Check, X, Pencil, Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 import { supabase } from '@/lib/supabase'
+import { useWriteGuard } from '@/lib/writes'
 import { cn } from '@/lib/utils'
 import type { Company, CostCenter } from '@/types'
 
@@ -9,6 +11,7 @@ type CostCenterRow = CostCenter & { region: string | null }
 
 export default function CostCentersPage() {
   const [companies, setCompanies] = useState<Company[]>([])
+  const { error: writeError, clearError: clearWriteError, run } = useWriteGuard()
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
   const [costCenters, setCostCenters] = useState<CostCenterRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -55,7 +58,10 @@ export default function CostCentersPage() {
 
   async function toggleActive(cc: CostCenterRow) {
     const newVal = !cc.is_active
-    await supabase.from('cost_centers').update({ is_active: newVal }).eq('id', cc.id)
+    const ok = await run(
+      supabase.from('cost_centers').update({ is_active: newVal }).eq('id', cc.id),
+    )
+    if (!ok) return
     setCostCenters(prev => prev.map(c => c.id === cc.id ? { ...c, is_active: newVal } : c))
   }
 
@@ -71,15 +77,18 @@ export default function CostCentersPage() {
 
   async function saveEdit(cc: CostCenterRow) {
     setSaving(true)
-    await supabase
-      .from('cost_centers')
-      .update({ name: editName.trim(), region: editRegion.trim() || null })
-      .eq('id', cc.id)
+    const ok = await run(
+      supabase
+        .from('cost_centers')
+        .update({ name: editName.trim(), region: editRegion.trim() || null })
+        .eq('id', cc.id),
+    )
+    setSaving(false)
+    if (!ok) return
     setCostCenters(prev =>
       prev.map(c => c.id === cc.id ? { ...c, name: editName.trim(), region: editRegion.trim() || null } : c)
     )
     setEditingId(null)
-    setSaving(false)
   }
 
   async function createCostCenter() {
@@ -153,6 +162,7 @@ export default function CostCentersPage() {
 
   return (
     <div className="p-8 max-w-4xl">
+      <SaveErrorBanner message={writeError} onDismiss={clearWriteError} className="mb-5" />
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Kostnadsställen</h1>

@@ -1,10 +1,10 @@
 import { useRef, useCallback, Fragment, useState, useEffect, useMemo } from 'react'
-import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2, X } from 'lucide-react'
+import { Lock, Unlock, Loader2, ChevronDown, ChevronRight, Calculator, Copy, Percent, MessageSquare, AlertTriangle, Plus, Columns3, Minimize2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { DENSITY, type Density } from '@/lib/density'
 import { periodKey, scenarioPeriods } from '@/hooks/useBudget'
-import type { AccountRow } from '@/hooks/useBudget'
+import type { AccountRow, EntryMeta } from '@/hooks/useBudget'
 import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
 import { comparisonYearFor } from '@/components/ComparisonYearPicker'
 import type { SectionPerms } from '@/hooks/useRoleSectionPermissions'
@@ -12,6 +12,7 @@ import type { Scenario, ScenarioLock, Company } from '@/types'
 import DistributeDialog from '@/components/DistributeDialog'
 import CopyRowDialog from '@/components/CopyRowDialog'
 import PercentageDialog from '@/components/PercentageDialog'
+import SaveErrorBanner from '@/components/SaveErrorBanner'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 
@@ -22,6 +23,10 @@ interface Props {
   /** Not budgetable, but have actuals — rendered read-only. */
   actualOnlyAccounts?: AccountRow[]
   entries: Map<string, number>
+  /** Who last changed each cell, keyed like `entries`. */
+  entryMeta?: Map<string, EntryMeta>
+  /** user_id → visningsnamn, för samma tooltip. */
+  userNames?: Map<string, string>
   icEntries: Map<string, number>
   actuals: Map<string, number>
   prevActuals: Map<string, number>
@@ -38,17 +43,6 @@ interface Props {
   onToggleLock: () => void
   saveError?: string | null
   onDismissSaveError?: () => void
-}
-
-/** RLS denials come back as raw Postgres text — say what it means instead. */
-function describeSaveError(message: string) {
-  if (/row-level security|permission denied/i.test(message)) {
-    return 'Du saknar behörighet att spara på det här kostnadsstället. Kontakta en administratör.'
-  }
-  if (/violates foreign key/i.test(message)) {
-    return 'Kontot eller kostnadsstället finns inte längre. Ladda om sidan.'
-  }
-  return message
 }
 
 function fmt(n: number) {
@@ -82,6 +76,8 @@ export default function BudgetMatrix({
   accounts,
   actualOnlyAccounts = [],
   entries,
+  entryMeta,
+  userNames,
   icEntries,
   actuals,
   prevActuals,
@@ -115,6 +111,20 @@ export default function BudgetMatrix({
     return periodKey(year, month) + ':' + accountId
   }
 
+  /**
+   * "Peter Edman · 20 sep 14:32" for the cell's tooltip. `updated_by` and
+   * `updated_at` har alltid skrivits — de har bara aldrig visats någonstans.
+   */
+  function changedBy(accountId: number, year: number, month: number): string | undefined {
+    const meta = entryMeta?.get(cellKey(accountId, year, month))
+    if (!meta?.at) return undefined
+    const who = (meta.by && userNames?.get(meta.by)) || 'Okänd användare'
+    const when = new Date(meta.at).toLocaleString('sv-SE', {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
+    return `Ändrad av ${who} · ${when}`
+  }
+
   /** Only accounts flagged budgetable accept input — the rest are shown for their actuals. */
   function isEditable(account: AccountRow) {
     return account.config?.is_budgetable === true
@@ -127,6 +137,19 @@ export default function BudgetMatrix({
         a.account_number.localeCompare(b.account_number, 'sv'),
       ),
     [accounts, actualOnlyAccounts],
+  )
+
+  /**
+   * Account lookup by id. `getValue` runs once per cell, per row total, per
+   * section total, per period total and again for the grand total — a linear
+   * scan there is ~800 comparisons every time, on every keystroke.
+   */
+  const rowById = useMemo(() => new Map(allRows.map((a) => [a.id, a])), [allRows])
+
+  /** Row position by id — the keyboard navigation needs it once per rendered row. */
+  const rowIndexById = useMemo(
+    () => new Map(allRows.map((a, i) => [a.id, i])),
+    [allRows],
   )
 
   // Derive counterparts present in icEntries per account
@@ -171,7 +194,7 @@ export default function BudgetMatrix({
   }
 
   function getValue(accountId: number, year: number, month: number): number {
-    const account = allRows.find((a) => a.id === accountId)
+    const account = rowById.get(accountId)
     if (account?.config?.is_intercompany) {
       return getCounterparts(accountId).reduce((sum, cpId) => {
         return sum + (icEntries.get(periodKey(year, month) + ':' + accountId + ':' + cpId) ?? 0)
@@ -226,6 +249,7 @@ export default function BudgetMatrix({
   const [showActuals, setShowActuals] = useState(true)
   const [compact, setCompact] = useState(false)
   const [comments, setComments] = useState<Map<number, string>>(new Map())
+  const [commentError, setCommentError] = useState<string | null>(null)
   const [openCommentId, setOpenCommentId] = useState<number | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
 
@@ -267,35 +291,52 @@ export default function BudgetMatrix({
       .eq('scenario_id', scenario.id)
       .eq('cost_center_id', costCenterId)
       .is('month', null)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          setCommentError(error.message)
+          return
+        }
         const map = new Map<number, string>()
         for (const row of data ?? []) map.set(row.account_id as number, row.comment as string)
         setComments(map)
       })
   }, [scenario.id, costCenterId])
 
+  /**
+   * Upsert rather than delete-then-insert: the old pair left the comment gone if
+   * the second call failed, and the local state was updated whether or not the
+   * write landed — so a rejected save looked successful until a reload.
+   */
   async function saveComment(accountId: number, comment: string) {
     const trimmed = comment.trim()
-    await supabase
-      .from('budget_comments')
-      .delete()
-      .eq('scenario_id', scenario.id)
-      .eq('account_id', accountId)
-      .eq('cost_center_id', costCenterId)
-      .is('month', null)
+
     if (trimmed) {
-      await supabase.from('budget_comments').insert({
-        scenario_id: scenario.id,
-        account_id: accountId,
-        cost_center_id: costCenterId,
-        month: null,
-        comment: trimmed,
-        created_by: userId,
-      })
+      const { error } = await supabase.from('budget_comments').upsert(
+        {
+          scenario_id: scenario.id,
+          account_id: accountId,
+          cost_center_id: costCenterId,
+          month: null,
+          comment: trimmed,
+          created_by: userId,
+        },
+        { onConflict: 'scenario_id,account_id,cost_center_id,month' },
+      )
+      if (error) { setCommentError(error.message); return }
       setComments((prev) => new Map(prev).set(accountId, trimmed))
     } else {
+      const { error } = await supabase
+        .from('budget_comments')
+        .delete()
+        .eq('scenario_id', scenario.id)
+        .eq('account_id', accountId)
+        .eq('cost_center_id', costCenterId)
+        .is('month', null)
+      if (error) { setCommentError(error.message); return }
       setComments((prev) => { const next = new Map(prev); next.delete(accountId); return next })
     }
+
+    setCommentError(null)
     setOpenCommentId(null)
   }
 
@@ -463,24 +504,17 @@ export default function BudgetMatrix({
         </div>
       </div>
 
-      {saveError && (
-        <div className="flex items-start gap-2.5 px-4 py-3 mb-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
-          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="font-medium">Ändringen sparades inte</p>
-            <p className="mt-0.5 text-red-700">{describeSaveError(saveError)}</p>
-          </div>
-          {onDismissSaveError && (
-            <button
-              onClick={onDismissSaveError}
-              className="shrink-0 text-red-400 hover:text-red-700 transition-colors"
-              title="Stäng"
-            >
-              <X size={15} />
-            </button>
-          )}
-        </div>
-      )}
+      <SaveErrorBanner
+        message={saveError ?? null}
+        onDismiss={() => onDismissSaveError?.()}
+        className="mb-3"
+      />
+      <SaveErrorBanner
+        message={commentError}
+        onDismiss={() => setCommentError(null)}
+        title="Kommentaren sparades inte"
+        className="mb-3"
+      />
 
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className={cn('min-w-max', d.table)}>
@@ -617,7 +651,7 @@ export default function BudgetMatrix({
                   {!isCollapsed && rows.map((account) => {
                     const isIC = account.config?.is_intercompany === true
                     const readOnly = !isEditable(account)
-                    const globalRowIdx = allRows.indexOf(account)
+                    const globalRowIdx = rowIndexById.get(account.id) ?? -1
                     const rowTotal = getRowTotal(account.id)
                     const hasComment = comments.has(account.id)
                     const isCommentOpen = openCommentId === account.id
@@ -747,7 +781,7 @@ export default function BudgetMatrix({
                             return (
                               <Fragment key={`${year}-${month}`}>
                               {prevCell}
-                              <td className="px-1 py-0.5">
+                              <td className="px-1 py-0.5" title={changedBy(account.id, year, month)}>
                                 {isPast || effectivelyLocked || readOnly ? (
                                   <div className={cn(
                                     'text-right rounded',
