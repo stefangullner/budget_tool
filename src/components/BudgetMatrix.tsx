@@ -811,10 +811,14 @@ export default function BudgetMatrix({
                                         e.target.select()
                                       }}
                                       onKeyDown={(e) => handleKeyDown(e, globalRowIdx, periodIdx)}
+                                      placeholder="0"
+                                      // Synlig ram som standard — en vit ruta med
+                                      // genomskinlig ram på vit rad är osynlig tills
+                                      // man råkar hovra över den
                                       className={cn(
-                                        'w-full text-right rounded border focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white text-gray-900',
+                                        'w-full text-right rounded border focus:border-brand-400 focus:ring-1 focus:ring-brand-400 focus:outline-none bg-white text-gray-900 placeholder:text-gray-300',
                                         d.inputPad,
-                                        devClass || 'border-transparent hover:border-gray-200',
+                                        devClass || 'border-gray-200 hover:border-gray-400',
                                       )}
                                     />
                                     {isSaving && (
@@ -892,7 +896,8 @@ export default function BudgetMatrix({
                                                 e.target.value = value !== 0 ? String(value) : ''
                                                 e.target.select()
                                               }}
-                                              className={cn('w-full text-right rounded border border-blue-100 hover:border-blue-300 focus:border-blue-400 focus:ring-1 focus:ring-blue-300 focus:outline-none bg-white text-gray-900', d.inputPad)}
+                                              placeholder="0"
+                                              className={cn('w-full text-right rounded border border-blue-200 hover:border-blue-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-300 focus:outline-none bg-white text-gray-900 placeholder:text-blue-200', d.inputPad)}
                                             />
                                             {isSaving && (
                                               <div className="absolute right-1.5 top-1/2 -translate-y-1/2">

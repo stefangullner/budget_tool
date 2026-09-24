@@ -401,9 +401,10 @@ export default function AccountMatrix({
                                         if (next !== value) onCellChange(cc.id, year, month, next)
                                         e.target.value = fmt(next)
                                       }}
+                                      placeholder="0"
                                       aria-label={`Budget ${MONTH_LABELS[month - 1]} ${year} ${cc.name}`}
                                       className={cn(
-                                        'w-full text-right tabular-nums border border-transparent rounded hover:border-gray-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 focus:outline-none bg-transparent',
+                                        'w-full text-right tabular-nums border border-gray-200 rounded bg-white placeholder:text-gray-300 hover:border-gray-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 focus:outline-none',
                                         d.inputPad,
                                       )}
                                     />
