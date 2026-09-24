@@ -87,7 +87,9 @@ export default function UsersPage() {
       })
       if (!res.ok) {
         const body = await res.text()
-        setError(`Fel ${res.status}: ${body || 'Kunde inte hämta användare'}`)
+        let message = body
+        try { message = JSON.parse(body).error ?? body } catch { /* plain-text body */ }
+        setError(`Fel ${res.status}: ${message || 'Kunde inte hämta användare'}`)
         return
       }
       const data = await res.json()
@@ -201,7 +203,7 @@ export default function UsersPage() {
         await fetchUsers()
       } else {
         const body = await res.json().catch(() => ({}))
-        setDeleteError(body.error ?? `Fel ${res.status}`)
+        setDeleteError(body.error ? `Fel ${res.status}: ${body.error}` : `Fel ${res.status}`)
       }
     } catch (err) {
       setDeleteError(String(err))

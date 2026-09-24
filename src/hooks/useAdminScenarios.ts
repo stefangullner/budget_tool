@@ -54,7 +54,7 @@ export function useAdminScenarios(companyId: number | null) {
 
     if (!locks || locks.length === 0) return []
 
-    const userIds = [...new Set(locks.map((l) => l.locked_by as string))]
+    const userIds = [...new Set(locks.map((l) => l.locked_by as string | null).filter((id): id is string => !!id))]
     const { data: profiles } = await supabase
       .from('user_profiles')
       .select('user_id, display_name')
@@ -65,7 +65,7 @@ export function useAdminScenarios(companyId: number | null) {
     return locks.map((l) => ({
       ...l,
       cost_center: l.cost_center as CostCenter,
-      locked_by_name: nameMap.get(l.locked_by) ?? l.locked_by,
+      locked_by_name: l.locked_by ? (nameMap.get(l.locked_by) ?? l.locked_by) : 'Borttagen användare',
     })) as LockDetail[]
   }
 

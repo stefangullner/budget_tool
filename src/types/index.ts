@@ -92,7 +92,8 @@ export interface BudgetEntry {
 export interface ScenarioLock {
   scenario_id: number
   cost_center_id: number
-  locked_by: string
+  // NULL once the user who locked it has been deleted — the lock itself stays
+  locked_by: string | null
   locked_at: string
 }
 

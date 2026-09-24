@@ -24,13 +24,23 @@ Deno.serve(async (req) => {
 
   // Verify caller is authenticated
   const token = req.headers.get('Authorization')?.replace('Bearer ', '')
-  const { data: { user } } = await admin.auth.getUser(token ?? '')
-  if (!user) return new Response('Unauthorized', { status: 401, headers: cors })
+  const { data: { user }, error: authError } = await admin.auth.getUser(token ?? '')
+  if (!user) {
+    console.error('admin-users: invalid token', authError?.message)
+    return json({ error: 'Your session has expired. Sign in again and retry.' }, 401)
+  }
 
   // Verify caller is admin
-  const { data: callerRoles } = await admin.from('user_roles').select('role').eq('user_id', user.id)
-  if (!callerRoles?.some((r) => r.role === 'admin'))
-    return new Response('Forbidden', { status: 403, headers: cors })
+  const { data: callerRoles, error: rolesError } = await admin
+    .from('user_roles').select('role').eq('user_id', user.id)
+  if (rolesError) {
+    console.error('admin-users: could not read caller roles', rolesError.message)
+    return json({ error: `Could not read your roles: ${rolesError.message}` }, 500)
+  }
+  if (!callerRoles?.some((r) => r.role === 'admin')) {
+    console.error('admin-users: caller is not admin', user.email, callerRoles)
+    return json({ error: `${user.email} has no admin role in user_roles.` }, 403)
+  }
 
   const url = new URL(req.url)
   const segments = url.pathname.split('/').filter(Boolean)
@@ -81,8 +91,12 @@ Deno.serve(async (req) => {
 
     // DELETE /admin-users/:userId — delete user
     if (req.method === 'DELETE' && last !== 'admin-users') {
+      if (last === user.id) return json({ error: 'You cannot delete your own account.' }, 400)
       const { error } = await admin.auth.admin.deleteUser(last)
-      if (error) throw error
+      if (error) {
+        console.error('admin-users: deleteUser failed', last, error)
+        throw error
+      }
       return json({ ok: true })
     }
 
