@@ -572,7 +572,7 @@ export default function IntercompanyPage() {
                         aria-label={`${MONTH_LABELS[p.month - 1]} ${p.year} ${row.costCenter.name}`}
                         // Vit ruta mot den gråa raden — fältet ska synas innan
                         // man klickar, inte först vid hover
-                        className="w-full px-2 py-1 text-right tabular-nums bg-white border border-gray-200 rounded shadow-sm placeholder:text-gray-300 hover:border-gray-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 focus:outline-none"
+                        className="w-full px-2 py-1 text-right tabular-nums bg-white border border-gray-200 rounded placeholder:text-gray-300 hover:border-gray-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 focus:outline-none"
                       />
                       {savingKeys.has(k) && (
                         <Loader2 size={9} className="animate-spin absolute right-0.5 top-1/2 -translate-y-1/2 text-brand-400" />
