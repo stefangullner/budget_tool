@@ -117,7 +117,12 @@ export default function IntercompanyPage() {
   const [loading, setLoading] = useState(false)
   const [onlyDiff, setOnlyDiff] = useState(false)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
-  const [openSides, setOpenSides] = useState<Set<string>>(new Set())
+  /**
+   * Sidor användaren fällt IHOP. Inverterat mot det uppenbara, eftersom
+   * inmatningsfälten annars kräver två klick att nå — ett på kontot och ett på
+   * sidan — och då är de svåra att ens upptäcka.
+   */
+  const [closedSides, setClosedSides] = useState<Set<string>>(new Set())
   const [userId, setUserId] = useState('')
 
   const { links, accounts: linkedAccounts, loading: loadingLinks } = useIntercompanyLinks()
@@ -457,7 +462,7 @@ export default function IntercompanyPage() {
   }
 
   function toggleSide(key: string) {
-    setOpenSides((prev) => {
+    setClosedSides((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -478,7 +483,7 @@ export default function IntercompanyPage() {
   ) {
     const isSeller = side === 'seller'
     const sideKey = `${line.accountId}:${cp.companyId}:${side}`
-    const isOpen = openSides.has(sideKey)
+    const isOpen = !closedSides.has(sideKey)
     const rows = isSeller ? cp.sellerRows : cp.buyerRows
     const companyId = isSeller ? line.sellerCompanyId : cp.companyId
     const counterpart = isSeller ? cp.companyId : line.sellerCompanyId
@@ -509,7 +514,7 @@ export default function IntercompanyPage() {
               <span className="text-gray-400 font-normal">
                 {withDataCount > 0
                   ? `${withDataCount} av ${totalCount} kostnadsställen`
-                  : `${totalCount} kostnadsställen`}
+                  : `alla ${totalCount} kostnadsställen`}
               </span>
             </button>
           </td>
@@ -527,8 +532,8 @@ export default function IntercompanyPage() {
         </tr>
 
         {isOpen && rows.map((row) => (
-          <tr key={`${sideKey}:${row.costCenter.id}`} className="bg-gray-50/40">
-            <td className="sticky left-0 bg-gray-50/40 px-4 py-1 pl-14">
+          <tr key={`${sideKey}:${row.costCenter.id}`} className="bg-gray-50">
+            <td className="sticky left-0 bg-gray-50 px-4 py-0.5 pl-14">
               <div className="flex items-center gap-1.5">
                 <span className={cn('font-mono', row.hasData ? 'text-gray-400' : 'text-gray-300')}>
                   {row.costCenter.code}
@@ -563,8 +568,11 @@ export default function IntercompanyPage() {
                           }
                           e.target.value = fmtInput(next)
                         }}
+                        placeholder="0"
                         aria-label={`${MONTH_LABELS[p.month - 1]} ${p.year} ${row.costCenter.name}`}
-                        className="w-full px-2 py-1 text-right tabular-nums border border-transparent rounded hover:border-gray-200 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 focus:outline-none bg-transparent"
+                        // Vit ruta mot den gråa raden — fältet ska synas innan
+                        // man klickar, inte först vid hover
+                        className="w-full px-2 py-1 text-right tabular-nums bg-white border border-gray-200 rounded shadow-sm placeholder:text-gray-300 hover:border-gray-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 focus:outline-none"
                       />
                       {savingKeys.has(k) && (
                         <Loader2 size={9} className="animate-spin absolute right-0.5 top-1/2 -translate-y-1/2 text-brand-400" />
@@ -576,14 +584,16 @@ export default function IntercompanyPage() {
                 </td>
               )
             })}
-            <td className="px-3 py-1 text-right tabular-nums text-gray-500 bg-gray-50">
+            <td className="px-3 py-0.5 text-right tabular-nums text-gray-500 bg-gray-100">
               {fmt(periods.reduce((s, p) => s + cellValue(row.costCenter.id, p), 0))}
             </td>
           </tr>
         ))}
 
-        {isOpen && (
-          <tr className="bg-gray-50/40">
+        {/* Fotnoten får bara en rad när den faktiskt säger något — "alla visas"
+            står redan i sidrubriken och behöver ingen egen rad per motpart. */}
+        {isOpen && (ambiguous || !hasScenario || withDataCount > 0) && (
+          <tr className="bg-gray-50">
             <td colSpan={colCount} className="px-4 py-1.5 pl-14">
               {ambiguous ? (
                 <span className="text-gray-400">
@@ -593,10 +603,6 @@ export default function IntercompanyPage() {
               ) : !hasScenario ? (
                 <span className="text-amber-700">
                   {companyName(companyId)} saknar ett scenario som heter {selectedName}.
-                </span>
-              ) : withDataCount === 0 ? (
-                <span className="text-gray-400">
-                  Inga belopp ännu — alla {totalCount} kostnadsställen visas
                 </span>
               ) : (
                 <button
