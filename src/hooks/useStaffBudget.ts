@@ -68,7 +68,7 @@ export function useStaffBudget(scenarioId: number | null, costCenterId: number |
     const rows = await fetchAllRows<StaffMember>((from, to) =>
       supabase
         .from('staff_members')
-        .select('*, staff_periods(*), staff_allocations(*)')
+        .select('*, staff_periods(*), staff_allocations(*), staff_vacation_plan(*)')
         .eq('scenario_id', scenarioId)
         .order('id')
         .range(from, to),
@@ -96,8 +96,11 @@ export function useStaffBudget(scenarioId: number | null, costCenterId: number |
       ...r,
       rate: Number(r.rate),
       share: Number(r.share),
+      vacation_days_taken: Number(r.vacation_days_taken),
       salary: Number(r.salary),
       vacation_supplement: Number(r.vacation_supplement),
+      vacation_liability: Number(r.vacation_liability),
+      vacation_liability_fee: Number(r.vacation_liability_fee),
       employer_fee: Number(r.employer_fee),
       pension: Number(r.pension),
       payroll_tax: Number(r.payroll_tax),
@@ -256,6 +259,39 @@ export function useStaffBudget(scenarioId: number | null, costCenterId: number |
     })
   }
 
+  /**
+   * Replace a person's whole vacation plan. The plan is all-or-nothing: once a
+   * person has any row, months without one mean zero days, not "use the default".
+   * So the caller always sends every month. Upsert first, then delete the rest,
+   * for the same access reason as setAllocations. `null` = back to the default plan.
+   */
+  function setVacationPlan(memberId: number, plan: { period: string; days: number }[] | null) {
+    return withSaving(memberId, async () => {
+      const keep = (plan ?? []).filter((d) => d.days > 0)
+      if (keep.length > 0) {
+        const ok = await guard.run(
+          supabase
+            .from('staff_vacation_plan')
+            .upsert(keep.map((d) => ({ member_id: memberId, ...d })), { onConflict: 'member_id,period' }),
+        )
+        if (!ok) return false
+      }
+      let del = supabase.from('staff_vacation_plan').delete().eq('member_id', memberId)
+      if (keep.length > 0) del = del.not('period', 'in', `(${keep.map((d) => d.period).join(',')})`)
+      // An explicit plan of all zeros still has to differ from "no plan": keep one zero row
+      if (plan && keep.length === 0 && plan.length > 0) {
+        const ok = await guard.run(
+          supabase
+            .from('staff_vacation_plan')
+            .upsert({ member_id: memberId, period: plan[0].period, days: 0 }, { onConflict: 'member_id,period' }),
+        )
+        if (!ok) return false
+        del = del.neq('period', plan[0].period)
+      }
+      return guard.run(del)
+    })
+  }
+
   async function addRecruitment(r: NewRecruitment) {
     if (!scenarioId) return false
     const { data, error } = await supabase
@@ -318,6 +354,7 @@ export function useStaffBudget(scenarioId: number | null, costCenterId: number |
     addPeriod,
     deletePeriod,
     setAllocations,
+    setVacationPlan,
     addRecruitment,
     deleteMember,
     refresh,

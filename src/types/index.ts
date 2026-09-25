@@ -96,8 +96,19 @@ export interface StaffParameters {
   /** First day of the month the increase applies from. NULL = no increase. */
   salary_increase_from: string | null
   vacation_supplement_pct: number
-  /** 1–12. NULL = spread evenly over the months. */
+  /** 1–12. NULL = spread evenly over the months. Only used by the 'simple' model. */
   vacation_supplement_month: number | null
+  /**
+   * 'simple' = supplement spread or in one month, no liability.
+   * 'liability' = days earned monthly, days taken per plan, change in liability booked.
+   */
+  vacation_model: 'simple' | 'liability'
+  /** Value of one vacation day, % of monthly salary (daily salary + supplement). */
+  vacation_liability_pct: number
+  account_vacation_liability: string | null
+  account_vacation_liability_fee: string | null
+  /** Standard days taken per month, { "7": 20 } — scaled to each person's days. */
+  default_vacation_plan: Record<string, number>
   employer_fee_pct: number
   pension_pct: number
   /** 'flat' = pension_pct on everything; 'itp1' = two rates split at the breakpoint. */
@@ -137,6 +148,14 @@ export interface StaffPeriod {
   reason: string | null
 }
 
+/** Vacation days a person plans to take in a month. */
+export interface StaffVacationDay {
+  member_id: number
+  /** First day of the month. */
+  period: string
+  days: number
+}
+
 export interface StaffAllocation {
   member_id: number
   cost_center_id: number
@@ -167,6 +186,8 @@ export interface StaffMember {
   updated_at: string
   staff_periods: StaffPeriod[]
   staff_allocations: StaffAllocation[]
+  /** Own vacation plan. Empty = the scenario's default plan applies. */
+  staff_vacation_plan: StaffVacationDay[]
 }
 
 /** One row of staff_cost_rows(): a person on a cost center in a month. */
@@ -177,8 +198,13 @@ export interface StaffCostRow {
   month: number
   rate: number
   share: number
+  /** The person's planned vacation days that month (own plan, default plan or even). */
+  vacation_days_taken: number
   salary: number
   vacation_supplement: number
+  /** Change in vacation liability: earned minus taken. Negative in vacation months. */
+  vacation_liability: number
+  vacation_liability_fee: number
   employer_fee: number
   pension: number
   payroll_tax: number

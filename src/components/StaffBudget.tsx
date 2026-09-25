@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { scenarioPeriods, periodKey } from '@/hooks/useBudget'
 import { memberName, periodDate, useStaffBudget } from '@/hooks/useStaffBudget'
 import SaveErrorBanner from '@/components/SaveErrorBanner'
-import type { CostCenter, EmploymentType, Scenario, StaffMember, StaffParameters } from '@/types'
+import type { CostCenter, EmploymentType, Scenario, StaffCostRow, StaffMember, StaffParameters } from '@/types'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 const MONTHS_SHORT = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
@@ -417,7 +417,10 @@ export default function StaffBudget({
                       return (
                         <td
                           key={periodKey(p.year, p.month)}
-                          title={r ? `Grad ${rate} % · andel ${r.share} % · ${fmt(r.total)} kr` : 'Ingen kostnad'}
+                          title={r
+                            ? `Grad ${rate} % · andel ${r.share} % · ${fmt(r.total)} kr` +
+                              (r.vacation_days_taken > 0 ? ` · semester ${r.vacation_days_taken} dagar` : '')
+                            : 'Ingen kostnad'}
                           className={cn(
                             'text-right tabular-nums px-2 py-1.5',
                             !r || rate === 0
@@ -462,6 +465,7 @@ export default function StaffBudget({
                       <td colSpan={periods.length + 8} className="px-3 py-3">
                         <MemberDetails
                           member={m}
+                          costRows={rows}
                           periods={periods}
                           scenarioStart={scenarioStart}
                           costCenters={costCenters}
@@ -528,9 +532,10 @@ export default function StaffBudget({
 type StaffApi = ReturnType<typeof useStaffBudget>
 
 function MemberDetails({
-  member: m, periods, scenarioStart, costCenters, ccById, editable, staff,
+  member: m, costRows, periods, scenarioStart, costCenters, ccById, editable, staff,
 }: {
   member: StaffMember
+  costRows: Map<string, StaffCostRow> | undefined
   periods: { year: number; month: number }[]
   scenarioStart: string
   costCenters: CostCenter[]
@@ -727,6 +732,112 @@ function MemberDetails({
             </button>
           </div>
         )}
+      </div>
+
+      {staff.params?.vacation_model === 'liability' && (
+        <VacationPlan member={m} costRows={costRows} periods={periods} editable={editable} staff={staff} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Vacation days per month. Without an own plan the scenario's default applies —
+ * shown greyed, straight from the calculation, so what you see is what is booked.
+ * The first edit copies the whole visible plan into the person's own plan; a plan
+ * is all months or none, since a missing month in an own plan means zero days.
+ */
+function VacationPlan({
+  member: m, costRows, periods, editable, staff,
+}: {
+  member: StaffMember
+  costRows: Map<string, StaffCostRow> | undefined
+  periods: { year: number; month: number }[]
+  editable: boolean
+  staff: StaffApi
+}) {
+  const own = useMemo(
+    () => new Map(m.staff_vacation_plan.map((d) => [d.period, Number(d.days)])),
+    [m.staff_vacation_plan],
+  )
+  const hasOwn = m.staff_vacation_plan.length > 0
+
+  const effective = periods.map((p) => {
+    const period = periodDate(p.year, p.month)
+    if (hasOwn) return { period, days: own.get(period) ?? 0 }
+    return { period, days: costRows?.get(`${p.year}-${p.month}`)?.vacation_days_taken ?? 0 }
+  })
+  const planned = effective.reduce((s, d) => s + d.days, 0)
+  const earned = (m.vacation_days * periods.length) / 12
+  const diff = Math.round((earned - planned) * 10) / 10
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+
+  function commit(period: string) {
+    const raw = drafts[period]
+    if (raw === undefined) return
+    const n = parseNum(raw)
+    setDrafts((d) => {
+      const next = { ...d }
+      delete next[period]
+      return next
+    })
+    if (n === null || n < 0 || n > 31) return
+    const current = effective.find((d) => d.period === period)?.days ?? 0
+    if (hasOwn && n === current) return
+    staff.setVacationPlan(
+      m.id,
+      effective.map((d) => ({ period: d.period, days: d.period === period ? n : Math.round(d.days * 100) / 100 })),
+    )
+  }
+
+  return (
+    <div className="lg:col-span-3 space-y-2 border-t border-gray-200 pt-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <h4 className="font-semibold text-gray-700">Semesteruttag</h4>
+        <span className={hasOwn ? 'text-gray-600' : 'text-gray-400'}>
+          {hasOwn ? 'Egen plan' : 'Standardplan för scenariot'}
+        </span>
+        <span className="tabular-nums text-gray-600">
+          {planned.toLocaleString('sv-SE', { maximumFractionDigits: 1 })} dagar planerade av{' '}
+          {earned.toLocaleString('sv-SE', { maximumFractionDigits: 1 })} intjänade
+        </span>
+        {Math.abs(diff) >= 0.5 && (
+          <span className={cn('tabular-nums', diff > 0 ? 'text-amber-700' : 'text-blue-700')}>
+            {diff > 0
+              ? `${diff.toLocaleString('sv-SE')} dagar sparas — skulden ökar`
+              : `${Math.abs(diff).toLocaleString('sv-SE')} dagar mer än intjänat — skulden minskar`}
+          </span>
+        )}
+        {hasOwn && editable && (
+          <button
+            onClick={() => staff.setVacationPlan(m.id, null)}
+            className="ml-auto text-brand-700 hover:underline"
+          >
+            Använd standardplanen
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {periods.map((p, i) => {
+          const d = effective[i]
+          const value = drafts[d.period] ?? (d.days ? String(Math.round(d.days * 10) / 10).replace('.', ',') : '')
+          return (
+            <label key={d.period} className="flex flex-col items-center gap-0.5 text-gray-500">
+              <span>{MONTHS_SHORT[p.month - 1]}</span>
+              <input
+                aria-label={`Semesterdagar ${MONTHS_SHORT[p.month - 1]} ${p.year}`}
+                value={value}
+                placeholder="0"
+                disabled={!editable}
+                onChange={(e) => setDrafts((s) => ({ ...s, [d.period]: e.target.value }))}
+                onBlur={() => commit(d.period)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                className={cn(INPUT, 'w-12 text-right tabular-nums', !hasOwn && 'text-gray-400')}
+              />
+            </label>
+          )
+        })}
       </div>
     </div>
   )

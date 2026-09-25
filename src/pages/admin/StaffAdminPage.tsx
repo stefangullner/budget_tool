@@ -23,6 +23,11 @@ const DEFAULTS: Omit<StaffParameters, 'scenario_id' | 'updated_by' | 'updated_at
   salary_increase_pct: 3,
   vacation_supplement_pct: 0.8,
   vacation_supplement_month: null,
+  vacation_model: 'simple',
+  vacation_liability_pct: 5.4,
+  account_vacation_liability: '7290',
+  account_vacation_liability_fee: '7519',
+  default_vacation_plan: {},
   employer_fee_pct: 31.42,
   pension_pct: 8.5,
   pension_model: 'flat',
@@ -44,7 +49,7 @@ const DEFAULTS: Omit<StaffParameters, 'scenario_id' | 'updated_by' | 'updated_at
   visibility: 'company_managers',
 }
 
-const ACCOUNT_FIELDS: { key: keyof StaffParameters; label: string; hint: string }[] = [
+const ACCOUNT_FIELDS: { key: keyof StaffParameters; label: string; hint: string; liabilityOnly?: boolean }[] = [
   { key: 'account_salary', label: 'Lön', hint: 'Månadslön och tillägg × grad × andel' },
   { key: 'account_vacation_supplement', label: 'Semestertillägg', hint: 'Procent per semesterdag' },
   { key: 'account_employer_fee', label: 'Sociala avgifter', hint: 'På lön och semestertillägg' },
@@ -52,6 +57,8 @@ const ACCOUNT_FIELDS: { key: keyof StaffParameters; label: string; hint: string 
   { key: 'account_payroll_tax', label: 'Löneskatt', hint: 'På pensionen' },
   { key: 'account_car_benefit', label: 'Bilförmån', hint: 'Förmånsvärdet, bara om det bokas' },
   { key: 'account_car_benefit_fee', label: 'Sociala avgifter bilförmån', hint: 'Avgiften på förmånsvärdet' },
+  { key: 'account_vacation_liability', label: 'Förändring semesterlöneskuld', hint: 'Intjänat minus uttaget', liabilityOnly: true },
+  { key: 'account_vacation_liability_fee', label: 'Sociala avgifter semesterlöneskuld', hint: 'Avgiften på förändringen', liabilityOnly: true },
 ]
 
 type Draft = Omit<StaffParameters, 'scenario_id' | 'updated_by' | 'updated_at'>
@@ -72,6 +79,9 @@ function toDraft(p: StaffParameters): Draft {
     payroll_tax_pct: Number(rest.payroll_tax_pct),
     absence_pct: Number(rest.absence_pct),
     default_salaries: rest.default_salaries ?? {},
+    vacation_model: rest.vacation_model ?? 'simple',
+    vacation_liability_pct: Number(rest.vacation_liability_pct ?? 5.4),
+    default_vacation_plan: rest.default_vacation_plan ?? {},
   }
 }
 
@@ -188,6 +198,7 @@ export default function StaffAdminPage() {
   const staffAccountIds = useMemo(() => {
     const src = draft ?? DEFAULTS
     return ACCOUNT_FIELDS
+      .filter((f) => !f.liabilityOnly || src.vacation_model === 'liability')
       .map((f) => accountByNumber.get(String(src[f.key as keyof typeof src] ?? ''))?.id)
       .filter((id): id is number => id !== undefined)
   }, [draft, accountByNumber])
@@ -286,9 +297,9 @@ export default function StaffAdminPage() {
             Satserna nedan kommer från Personalbudget 2026 och kan ändras efteråt.
           </p>
           <ul className="text-sm text-gray-600 list-disc pl-5">
-            <li>Konton: {ACCOUNT_FIELDS.map((f) => DEFAULTS[f.key as keyof typeof DEFAULTS]).filter((v, i, a) => a.indexOf(v) === i).join(', ')}</li>
+            <li>Konton: {ACCOUNT_FIELDS.filter((f) => !f.liabilityOnly).map((f) => DEFAULTS[f.key as keyof typeof DEFAULTS]).filter((v, i, a) => a.indexOf(v) === i).join(', ')}</li>
             <li>Löneökning 3 % från maj, sociala avgifter 31,42 %, pension 8,5 %, löneskatt 24,26 %, semestertillägg 0,8 % per dag</li>
-            <li>Pensionen startar som fast procent. Byt till ITP1 och fyll i brytpunkten efter aktiveringen.</li>
+            <li>Pensionen startar som fast procent och semestern i enkelt läge. Byt till ITP1 och semesterlöneskuld efter aktiveringen.</li>
           </ul>
           {existingEntries !== null && existingEntries > 0 && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
@@ -392,15 +403,37 @@ export default function StaffAdminPage() {
                   )}
                   <span className="text-gray-600">Löneskatt på pension</span>
                   <PercentInput ariaLabel="Löneskatt" value={draft.payroll_tax_pct} onChange={(v) => set('payroll_tax_pct', v)} />
-                  <span className="text-gray-600">Semestertillägg per dag</span>
+                  <span className="text-gray-600">Semester</span>
+                  <select aria-label="Semestermodell" value={draft.vacation_model}
+                    onChange={(e) => set('vacation_model', e.target.value as Draft['vacation_model'])}
+                    className={cn(INPUT, 'justify-self-start')}>
+                    <option value="liability">Semesterlöneskuld — intjänande och uttag per månad</option>
+                    <option value="simple">Enkel — bara semestertillägg</option>
+                  </select>
+                  <span className="text-gray-600 pl-3">Semestertillägg per dag</span>
                   <span className="flex flex-wrap items-center gap-2">
                     <PercentInput ariaLabel="Semestertillägg per dag" value={draft.vacation_supplement_pct} onChange={(v) => set('vacation_supplement_pct', v)} />
-                    <select aria-label="Semestertillägg bokas" value={draft.vacation_supplement_month ?? ''}
-                      onChange={(e) => set('vacation_supplement_month', e.target.value ? Number(e.target.value) : null)} className={INPUT}>
-                      <option value="">jämnt över året</option>
-                      {MONTHS.map((m, i) => <option key={m} value={i + 1}>allt i {m}</option>)}
-                    </select>
+                    {draft.vacation_model === 'simple' ? (
+                      <select aria-label="Semestertillägg bokas" value={draft.vacation_supplement_month ?? ''}
+                        onChange={(e) => set('vacation_supplement_month', e.target.value ? Number(e.target.value) : null)} className={INPUT}>
+                        <option value="">jämnt över året</option>
+                        {MONTHS.map((m, i) => <option key={m} value={i + 1}>allt i {m}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-gray-400">bokas de månader dagarna tas ut</span>
+                    )}
                   </span>
+                  {draft.vacation_model === 'liability' && (
+                    <>
+                      <span className="text-gray-600 pl-3">Värde per semesterdag</span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <PercentInput ariaLabel="Värde per semesterdag" value={draft.vacation_liability_pct} onChange={(v) => set('vacation_liability_pct', v)} />
+                        <span className="text-xs text-gray-400">av månadslönen, inkl. tillägg. 2026-filen: 5,4 %.</span>
+                      </span>
+                      <span className="text-gray-600 pl-3 self-start pt-1.5">Standardplan för uttag</span>
+                      <VacationDefaultPlan value={draft.default_vacation_plan} onChange={(v) => set('default_vacation_plan', v)} />
+                    </>
+                  )}
                   <span className="text-gray-600">Frånvaroavdrag</span>
                   <span className="flex flex-wrap items-center gap-2">
                     <PercentInput ariaLabel="Frånvaroavdrag" value={draft.absence_pct} onChange={(v) => set('absence_pct', v)} />
@@ -433,7 +466,7 @@ export default function StaffAdminPage() {
               <div className="space-y-3">
                 <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Konton — låsta i budgetmatrisen</h4>
                 <div className="space-y-2">
-                  {ACCOUNT_FIELDS.map((f) => {
+                  {ACCOUNT_FIELDS.filter((f) => !f.liabilityOnly || draft.vacation_model === 'liability').map((f) => {
                     const v = String(draft[f.key as keyof Draft] ?? '')
                     const acc = v ? accountByNumber.get(v) : undefined
                     return (
@@ -527,6 +560,58 @@ function Breakpoint({ value, onChange }: { value: number | null; onChange: (v: n
         >
           × 7,5 / 12
         </button>
+      </span>
+    </span>
+  )
+}
+
+const MONTHS_SHORT = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+
+/**
+ * Days taken per calendar month for someone with the plan's total days. Each
+ * person without an own plan gets it scaled to their vacation days.
+ */
+function VacationDefaultPlan({ value, onChange }: { value: Record<string, number>; onChange: (v: Record<string, number>) => void }) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const total = Object.values(value).reduce((s, d) => s + Number(d), 0)
+  return (
+    <span className="flex flex-col gap-1.5">
+      <span className="flex flex-wrap gap-1">
+        {MONTHS_SHORT.map((m, i) => {
+          const key = String(i + 1)
+          const shown = drafts[key] ?? (value[key] ? String(value[key]).replace('.', ',') : '')
+          return (
+            <label key={m} className="flex flex-col items-center gap-0.5 text-xs text-gray-500">
+              {m}
+              <input
+                aria-label={`Standard semesterdagar ${m}`}
+                value={shown}
+                placeholder="0"
+                onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
+                onBlur={() => {
+                  const raw = drafts[key]
+                  if (raw === undefined) return
+                  setDrafts((d) => {
+                    const next = { ...d }
+                    delete next[key]
+                    return next
+                  })
+                  const n = parseNum(raw)
+                  const next = { ...value }
+                  if (n === null || n <= 0) delete next[key]
+                  else next[key] = n
+                  onChange(next)
+                }}
+                className={cn(INPUT, 'w-11 px-1 text-right tabular-nums')}
+              />
+            </label>
+          )
+        })}
+      </span>
+      <span className="text-xs text-gray-400">
+        {total > 0
+          ? `Summa ${total.toLocaleString('sv-SE')} dagar. En person med fler eller färre semesterdagar får planen skalad.`
+          : 'Ingen standardplan — personer utan egen plan tar ut semestern jämnt, och skulden ligger still.'}
       </span>
     </span>
   )
