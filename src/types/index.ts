@@ -100,6 +100,12 @@ export interface StaffParameters {
   vacation_supplement_month: number | null
   employer_fee_pct: number
   pension_pct: number
+  /** 'flat' = pension_pct on everything; 'itp1' = two rates split at the breakpoint. */
+  pension_model: 'flat' | 'itp1'
+  /** ITP1 breakpoint in kr per month: 7.5 income base amounts / 12. */
+  itp1_breakpoint: number | null
+  itp1_rate_below: number
+  itp1_rate_above: number
   payroll_tax_pct: number
   absence_pct: number
   cost_sign: 1 | -1

@@ -25,6 +25,10 @@ const DEFAULTS: Omit<StaffParameters, 'scenario_id' | 'updated_by' | 'updated_at
   vacation_supplement_month: null,
   employer_fee_pct: 31.42,
   pension_pct: 8.5,
+  pension_model: 'flat',
+  itp1_breakpoint: null,
+  itp1_rate_below: 4.5,
+  itp1_rate_above: 30,
   payroll_tax_pct: 24.26,
   absence_pct: 0,
   cost_sign: 1,
@@ -61,6 +65,10 @@ function toDraft(p: StaffParameters): Draft {
     vacation_supplement_pct: Number(rest.vacation_supplement_pct),
     employer_fee_pct: Number(rest.employer_fee_pct),
     pension_pct: Number(rest.pension_pct),
+    pension_model: rest.pension_model ?? 'flat',
+    itp1_breakpoint: rest.itp1_breakpoint === null || rest.itp1_breakpoint === undefined ? null : Number(rest.itp1_breakpoint),
+    itp1_rate_below: Number(rest.itp1_rate_below ?? 4.5),
+    itp1_rate_above: Number(rest.itp1_rate_above ?? 30),
     payroll_tax_pct: Number(rest.payroll_tax_pct),
     absence_pct: Number(rest.absence_pct),
     default_salaries: rest.default_salaries ?? {},
@@ -234,6 +242,8 @@ export default function StaffAdminPage() {
   }
 
   const dirty = params && draft ? JSON.stringify(toDraft(params)) !== JSON.stringify(draft) : false
+  // The database refuses ITP1 without a breakpoint; say so before the save does
+  const invalid = draft?.pension_model === 'itp1' && !draft.itp1_breakpoint
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => (d ? { ...d, [k]: v } : d))
 
   return (
@@ -278,6 +288,7 @@ export default function StaffAdminPage() {
           <ul className="text-sm text-gray-600 list-disc pl-5">
             <li>Konton: {ACCOUNT_FIELDS.map((f) => DEFAULTS[f.key as keyof typeof DEFAULTS]).filter((v, i, a) => a.indexOf(v) === i).join(', ')}</li>
             <li>Löneökning 3 % från maj, sociala avgifter 31,42 %, pension 8,5 %, löneskatt 24,26 %, semestertillägg 0,8 % per dag</li>
+            <li>Pensionen startar som fast procent. Byt till ITP1 och fyll i brytpunkten efter aktiveringen.</li>
           </ul>
           {existingEntries !== null && existingEntries > 0 && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
@@ -313,7 +324,8 @@ export default function StaffAdminPage() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md hover:border-gray-400 disabled:opacity-50">
                 <RefreshCw size={13} /> Räkna om allt
               </button>
-              <button onClick={save} disabled={!dirty || busy}
+              <button onClick={save} disabled={!dirty || busy || invalid}
+                title={invalid ? 'Fyll i brytpunkten för ITP1' : undefined}
                 className="px-3 py-1.5 rounded-md bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 disabled:opacity-40">
                 {busy ? 'Sparar…' : 'Spara och räkna om'}
               </button>
@@ -357,7 +369,27 @@ export default function StaffAdminPage() {
                   <span className="text-gray-600">Sociala avgifter</span>
                   <PercentInput ariaLabel="Sociala avgifter" value={draft.employer_fee_pct} onChange={(v) => set('employer_fee_pct', v)} />
                   <span className="text-gray-600">Pension</span>
-                  <PercentInput ariaLabel="Pension" value={draft.pension_pct} onChange={(v) => set('pension_pct', v)} />
+                  <select aria-label="Pensionsmodell" value={draft.pension_model}
+                    onChange={(e) => set('pension_model', e.target.value as Draft['pension_model'])}
+                    className={cn(INPUT, 'justify-self-start')}>
+                    <option value="itp1">ITP1 — två satser kring brytpunkten</option>
+                    <option value="flat">Fast procent på hela lönen</option>
+                  </select>
+                  {draft.pension_model === 'flat' ? (
+                    <>
+                      <span className="text-gray-600 pl-3">Sats</span>
+                      <PercentInput ariaLabel="Pension" value={draft.pension_pct} onChange={(v) => set('pension_pct', v)} />
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-gray-600 pl-3">Upp till brytpunkten</span>
+                      <PercentInput ariaLabel="ITP1 under brytpunkten" value={draft.itp1_rate_below} onChange={(v) => set('itp1_rate_below', v)} />
+                      <span className="text-gray-600 pl-3">Över brytpunkten</span>
+                      <PercentInput ariaLabel="ITP1 över brytpunkten" value={draft.itp1_rate_above} onChange={(v) => set('itp1_rate_above', v)} />
+                      <span className="text-gray-600 pl-3">Brytpunkt</span>
+                      <Breakpoint value={draft.itp1_breakpoint} onChange={(v) => set('itp1_breakpoint', v)} />
+                    </>
+                  )}
                   <span className="text-gray-600">Löneskatt på pension</span>
                   <PercentInput ariaLabel="Löneskatt" value={draft.payroll_tax_pct} onChange={(v) => set('payroll_tax_pct', v)} />
                   <span className="text-gray-600">Semestertillägg per dag</span>
@@ -439,6 +471,64 @@ export default function StaffAdminPage() {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * ITP1 breakpoint in kr per month, with a helper that derives it from the
+ * income base amount (7.5 × IBB / 12) — the figure people actually look up.
+ */
+function Breakpoint({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  const [draft, setDraft] = useState(value === null ? '' : String(value))
+  const [focused, setFocused] = useState(false)
+  const [ibb, setIbb] = useState('')
+  useEffect(() => {
+    if (!focused) setDraft(value === null ? '' : String(value))
+  }, [value, focused])
+  const ibbNum = parseNum(ibb)
+
+  return (
+    <span className="flex flex-col gap-1.5">
+      <span className="inline-flex items-center gap-1.5">
+        <input
+          aria-label="Brytpunkt kr per månad"
+          value={draft}
+          placeholder="kr"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            const n = parseNum(e.target.value)
+            onChange(n !== null && n > 0 ? n : null)
+          }}
+          className={cn(INPUT, 'w-28 text-right tabular-nums', value === null && 'border-red-300')}
+        />
+        <span className="text-gray-400 text-sm">kr/mån</span>
+        {value === null && <span className="text-xs text-red-600">Krävs för ITP1</span>}
+      </span>
+      <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+        Räkna från inkomstbasbelopp:
+        <input
+          aria-label="Inkomstbasbelopp"
+          value={ibb}
+          placeholder="IBB"
+          onChange={(e) => setIbb(e.target.value)}
+          className={cn(INPUT, 'w-24 text-right tabular-nums text-xs py-1')}
+        />
+        <button
+          type="button"
+          disabled={ibbNum === null || ibbNum <= 0}
+          onClick={() => {
+            if (ibbNum === null) return
+            onChange(Math.round((7.5 * ibbNum) / 12))
+            setIbb('')
+          }}
+          className="px-2 py-1 border border-gray-200 rounded-md hover:border-gray-400 disabled:opacity-40"
+        >
+          × 7,5 / 12
+        </button>
+      </span>
+    </span>
   )
 }
 
