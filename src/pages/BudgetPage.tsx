@@ -1,15 +1,18 @@
 import { useState, useEffect, useMemo } from 'react'
-import { LayoutList, Table2, Clock, AlertTriangle, Rows3 } from 'lucide-react'
+import { LayoutList, Table2, Clock, AlertTriangle, Rows3, Users } from 'lucide-react'
 import HelpButton from '@/components/HelpButton'
 import { supabase } from '@/lib/supabase'
 import { useBudget } from '@/hooks/useBudget'
 import { useAccountBudget } from '@/hooks/useAccountBudget'
 import { useRoleSectionPermissions } from '@/hooks/useRoleSectionPermissions'
 import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
+import { useStaffAccounts, useStaffVisibility } from '@/hooks/useStaffAccounts'
+import { useRole } from '@/hooks/useRole'
 
 import BudgetMatrix from '@/components/BudgetMatrix'
 import BudgetOverview from '@/components/BudgetOverview'
 import AccountMatrix from '@/components/AccountMatrix'
+import StaffBudget from '@/components/StaffBudget'
 
 import { cn } from '@/lib/utils'
 import type { Company } from '@/types'
@@ -20,7 +23,7 @@ export default function BudgetPage() {
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null)
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<number | null>(null)
 
-  const [view, setView] = useState<'matrix' | 'overview' | 'account'>('matrix')
+  const [view, setView] = useState<'matrix' | 'overview' | 'account' | 'staff'>('matrix')
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [userId, setUserId] = useState<string>('')
 
@@ -59,7 +62,17 @@ export default function BudgetPage() {
     upsertEntry,
     upsertICEntry,
     toggleLock,
+    reloadEntries,
   } = useBudget(selectedCompanyId, selectedScenarioId, selectedCostCenterId)
+
+  // The staff view rewrites the staff accounts in the database; coming back to the
+  // matrix must show the recalculated amounts, not the ones loaded before.
+  const [lastView, setLastView] = useState(view)
+  useEffect(() => {
+    if (lastView === 'staff' && view !== 'staff') reloadEntries()
+    setLastView(view)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
 
   // Auto-select first scenario and first KS when company changes
   useEffect(() => {
@@ -80,6 +93,18 @@ export default function BudgetPage() {
   }, [costCenters, selectedCostCenterId])
 
   const selectedScenario = scenarios.find((s) => s.id === selectedScenarioId) ?? null
+  const staffAccountIds = useStaffAccounts(selectedScenarioId)
+  const staffVisibility = useStaffVisibility(selectedScenarioId)
+  const { role } = useRole()
+  // While rolling out, only admins and company managers get the staff tab
+  const showStaffTab =
+    staffVisibility === 'everyone' ||
+    ((staffVisibility === 'company_managers' || staffVisibility === null) &&
+      (role === 'admin' || role === 'company_manager'))
+
+  useEffect(() => {
+    if (view === 'staff' && !showStaffTab) setView('matrix')
+  }, [view, showStaffTab])
 
   /**
    * Accounts the per-account view can show. Intercompany accounts are left out —
@@ -173,6 +198,17 @@ export default function BudgetPage() {
             <Rows3 size={13} />
             Per konto
           </button>
+          {showStaffTab && <button
+            onClick={() => setView('staff')}
+            title="Personalbudget per kostnadsställe"
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors',
+              view === 'staff' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            <Users size={13} />
+            Personal
+          </button>}
         </div>
         </div>
       </div>
@@ -333,9 +369,10 @@ export default function BudgetPage() {
           prevActuals={accountBudget.prevActuals}
           saving={accountBudget.saving}
           canEdit={
-            sectionPerms
+            !staffAccountIds.has(selectedAccount.id) &&
+            (sectionPerms
               ? sectionPerms.canEdit(selectedAccount.config?.section ?? '— Ingen sektion')
-              : true
+              : true)
           }
           onCellChange={(costCenterId, year, month, amount) =>
             accountBudget.upsertCell(costCenterId, year, month, amount, userId)
@@ -343,6 +380,24 @@ export default function BudgetPage() {
           onAllocate={(cells) => accountBudget.writeCells(cells, userId)}
           saveError={accountBudget.saveError}
           onDismissSaveError={accountBudget.clearSaveError}
+        />
+      ))}
+
+      {/* Staff budget — people per cost center, calculated into the staff accounts */}
+      {view === 'staff' && showStaffTab && (!selectedScenario || !selectedCostCenterId ? (
+        <div className="text-center py-20 text-gray-400 text-sm">
+          {scenarios.length === 0
+            ? 'Skapa ett scenario för att börja budgetera.'
+            : 'Välj ett scenario och ett kostnadsställe.'}
+        </div>
+      ) : (
+        <StaffBudget
+          scenario={selectedScenario}
+          costCenterId={selectedCostCenterId}
+          costCenters={costCenters}
+          isLocked={locks.some((l) => l.cost_center_id === selectedCostCenterId)}
+          prevActuals={prevActuals}
+          staffAccountIds={staffAccountIds}
         />
       ))}
 
@@ -368,6 +423,7 @@ export default function BudgetPage() {
           accounts={accounts}
           actualOnlyAccounts={actualOnlyAccounts}
           sectionPerms={sectionPerms}
+          staffAccountIds={staffAccountIds}
           entries={entries}
           entryMeta={entryMeta}
           userNames={userNames}

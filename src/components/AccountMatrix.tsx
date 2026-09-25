@@ -33,6 +33,9 @@ interface Props {
 
 /** RLS denials come back as raw Postgres text — say what it means instead. */
 function describeSaveError(message: string) {
+  if (/staff_locked_account/i.test(message)) {
+    return 'Kontot räknas fram av personalbudgeten och kan inte ändras här.'
+  }
   if (/row-level security|permission denied/i.test(message)) {
     return 'Du saknar behörighet att spara på det här kostnadsstället. Kontakta en administratör.'
   }

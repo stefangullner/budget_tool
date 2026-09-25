@@ -89,6 +89,98 @@ export interface BudgetEntry {
   updated_at: string
 }
 
+/** Calculation rules for the staff budget of one scenario. No row = not in use. */
+export interface StaffParameters {
+  scenario_id: number
+  salary_increase_pct: number
+  /** First day of the month the increase applies from. NULL = no increase. */
+  salary_increase_from: string | null
+  vacation_supplement_pct: number
+  /** 1–12. NULL = spread evenly over the months. */
+  vacation_supplement_month: number | null
+  employer_fee_pct: number
+  pension_pct: number
+  payroll_tax_pct: number
+  absence_pct: number
+  cost_sign: 1 | -1
+  account_salary: string
+  account_vacation_supplement: string | null
+  account_employer_fee: string | null
+  account_pension: string | null
+  account_payroll_tax: string | null
+  account_car_benefit: string | null
+  account_car_benefit_fee: string | null
+  book_car_benefit_value: boolean
+  default_salaries: Record<string, number>
+  /** Rollout switch: who sees the staff budget besides admins. */
+  visibility: 'company_managers' | 'everyone'
+  updated_by: string | null
+  updated_at: string
+}
+
+export type EmploymentType = 'TV' | 'PRO' | 'TID'
+
+export interface StaffPeriod {
+  id: number
+  member_id: number
+  /** First day of the month, e.g. "2027-02-01". */
+  from_period: string
+  /** First day of the month, inclusive. */
+  to_period: string
+  rate: number
+  reason: string | null
+}
+
+export interface StaffAllocation {
+  member_id: number
+  cost_center_id: number
+  share: number
+  scenario_id: number
+}
+
+export interface StaffMember {
+  id: number
+  scenario_id: number
+  employee_no: string | null
+  first_name: string
+  last_name: string
+  title: string | null
+  employment_type: EmploymentType | null
+  is_recruitment: boolean
+  home_cost_center_id: number
+  included: boolean
+  employment_rate: number
+  monthly_salary: number
+  supplement: number
+  vacation_days: number
+  car_benefit: number
+  note: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  updated_by: string | null
+  updated_at: string
+  staff_periods: StaffPeriod[]
+  staff_allocations: StaffAllocation[]
+}
+
+/** One row of staff_cost_rows(): a person on a cost center in a month. */
+export interface StaffCostRow {
+  member_id: number
+  cost_center_id: number
+  year: number
+  month: number
+  rate: number
+  share: number
+  salary: number
+  vacation_supplement: number
+  employer_fee: number
+  pension: number
+  payroll_tax: number
+  car_benefit: number
+  car_benefit_fee: number
+  total: number
+}
+
 export interface ScenarioLock {
   scenario_id: number
   cost_center_id: number

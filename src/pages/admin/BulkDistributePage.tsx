@@ -5,6 +5,7 @@ import BulkDistributePanel from '@/components/BulkDistributePanel'
 import { supabase, fetchAllRows } from '@/lib/supabase'
 import { scenarioPeriods, periodKey, type AccountRow } from '@/hooks/useBudget'
 import { useSectionOrder, sortSections } from '@/hooks/useSectionOrder'
+import { useStaffAccounts } from '@/hooks/useStaffAccounts'
 import { comparisonYearFor } from '@/components/ComparisonYearPicker'
 import { applyBulkPlan, cellKey, type BulkGroup, type BulkTarget } from '@/lib/bulkDistribute'
 import { cn } from '@/lib/utils'
@@ -121,6 +122,7 @@ export default function BulkDistributePage() {
   }, [scenarioId, reloadToken])
 
   const scenario = scenarios.find((s) => s.id === scenarioId) ?? null
+  const staffAccountIds = useStaffAccounts(scenarioId)
 
   const periods = useMemo(() => (scenario ? scenarioPeriods(scenario) : []), [scenario])
 
@@ -173,14 +175,18 @@ export default function BulkDistributePage() {
   /**
    * The accounts a run can touch. Intercompany accounts are left out — their
    * amounts live on counterpart sub-rows, not on the account itself, so a plain
-   * value here would become an invisible duplicate.
+   * value here would become an invisible duplicate. Staff accounts are left out
+   * because the staff budget owns them; the database would reject the whole batch.
    */
   const budgetableAccounts = useMemo(
     () =>
       allAccounts.filter(
-        (a) => a.config?.is_budgetable === true && a.config?.is_intercompany !== true,
+        (a) =>
+          a.config?.is_budgetable === true &&
+          a.config?.is_intercompany !== true &&
+          !staffAccountIds.has(a.id),
       ),
-    [allAccounts],
+    [allAccounts, staffAccountIds],
   )
 
   // Narrows both queries below — most accounts in a company are not budgetable,

@@ -5,6 +5,9 @@ type Writable = PromiseLike<{ error: { message: string } | null }>
 
 /** RLS denials come back as raw Postgres text — say what it means instead. */
 export function describeWriteError(message: string): string {
+  if (/staff_locked_account/i.test(message)) {
+    return 'Kontot räknas fram av personalbudgeten och kan inte ändras här.'
+  }
   if (/row-level security|permission denied/i.test(message)) {
     return 'Du saknar behörighet att göra den här ändringen. Kontakta en administratör.'
   }

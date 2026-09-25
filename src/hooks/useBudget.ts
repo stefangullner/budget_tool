@@ -490,5 +490,9 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     upsertICEntry,
     toggleLock,
     createScenario,
+    /** Re-read the budget entries — e.g. after the staff budget rewrote its accounts. */
+    reloadEntries: () => {
+      if (scenarioId && costCenterId) loadEntries(scenarioId, costCenterId)
+    },
   }
 }

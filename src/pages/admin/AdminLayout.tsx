@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Users, FileText, BookOpen, Building, Building2, Calendar, RefreshCw, Download, Upload, Layers, ArrowLeftRight } from 'lucide-react'
+import { Users, FileText, BookOpen, Building, Building2, Calendar, RefreshCw, Download, Upload, Layers, ArrowLeftRight, Contact } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const adminNav = [
@@ -10,6 +10,7 @@ const adminNav = [
   { to: '/admin/cost-centers', label: 'Kostnadsställen', icon: Building },
   { to: '/admin/companies',    label: 'Bolag',           icon: Building2 },
   { to: '/admin/deadlines',    label: 'Deadlines',       icon: Calendar },
+  { to: '/admin/staff',        label: 'Personal',        icon: Contact },
   { to: '/admin/bulk',         label: 'Massfördelning',  icon: Layers },
   { to: '/admin/intercompany', label: 'Internhandel',    icon: ArrowLeftRight },
   { to: '/admin/sync',         label: 'Synkronisering',  icon: RefreshCw },

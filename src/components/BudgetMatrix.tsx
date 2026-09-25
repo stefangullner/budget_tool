@@ -38,6 +38,8 @@ interface Props {
   companies: Company[]
   userId: string
   sectionPerms?: SectionPerms
+  /** Accounts calculated by the staff budget — shown, never editable here. */
+  staffAccountIds?: Set<number>
   onCellChange: (accountId: number, year: number, month: number, amount: number) => void
   onICCellChange: (accountId: number, counterpartId: number, year: number, month: number, amount: number) => void
   onToggleLock: () => void
@@ -89,6 +91,7 @@ export default function BudgetMatrix({
   companies,
   userId,
   sectionPerms,
+  staffAccountIds,
   onCellChange,
   onICCellChange,
   onToggleLock,
@@ -125,9 +128,12 @@ export default function BudgetMatrix({
     return `Ändrad av ${who} · ${when}`
   }
 
-  /** Only accounts flagged budgetable accept input — the rest are shown for their actuals. */
+  /**
+   * Only accounts flagged budgetable accept input — the rest are shown for their
+   * actuals. Staff accounts are budgetable but written by the staff budget.
+   */
   function isEditable(account: AccountRow) {
-    return account.config?.is_budgetable === true
+    return account.config?.is_budgetable === true && !staffAccountIds?.has(account.id)
   }
 
   /** Budgetable accounts plus the actual-only ones, in account-number order. */
@@ -689,14 +695,21 @@ export default function BudgetMatrix({
                                 {isIC && (
                                   <span className="ml-1 px-1 py-0.5 rounded text-blue-500 bg-blue-50 font-medium shrink-0">IC</span>
                                 )}
-                                {readOnly && (
+                                {readOnly && (staffAccountIds?.has(account.id) ? (
+                                  <span
+                                    title="Räknas fram av personalbudgeten och kan inte ändras här"
+                                    className="ml-1 px-1 py-0.5 rounded text-violet-600 bg-violet-50 font-medium shrink-0"
+                                  >
+                                    Personal
+                                  </span>
+                                ) : (
                                   <span
                                     title="Kontot är inte aktiverat för budgetering — visas för sitt utfall"
                                     className="ml-1 px-1 py-0.5 rounded text-slate-500 bg-slate-100 font-medium shrink-0"
                                   >
                                     Utfall
                                   </span>
-                                )}
+                                ))}
                               </div>
                               {!isIC && !readOnly && (
                                 <div className="flex items-center gap-0.5 shrink-0">

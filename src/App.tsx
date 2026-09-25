@@ -21,6 +21,7 @@ import ImportPage from '@/pages/admin/ImportPage'
 import CompaniesPage from '@/pages/admin/CompaniesPage'
 import BulkDistributePage from '@/pages/admin/BulkDistributePage'
 import IntercompanyLinksPage from '@/pages/admin/IntercompanyLinksPage'
+import StaffAdminPage from '@/pages/admin/StaffAdminPage'
 
 export default function App() {
   const { session, loading, needsPasswordSet, clearPasswordSet } = useAuth()
@@ -61,6 +62,7 @@ export default function App() {
                 <Route path="cost-centers" element={<CostCentersPage />} />
                 <Route path="companies"    element={<CompaniesPage />} />
                 <Route path="deadlines"    element={<DeadlinesPage />} />
+                <Route path="staff"        element={<StaffAdminPage />} />
                 <Route path="bulk"         element={<BulkDistributePage />} />
                 <Route path="intercompany" element={<IntercompanyLinksPage />} />
                 <Route path="sync"         element={<SyncPage />} />
