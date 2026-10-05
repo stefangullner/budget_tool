@@ -63,6 +63,8 @@ export default function BudgetPage() {
     upsertICEntry,
     toggleLock,
     reloadEntries,
+    accountsLoading,
+    accountsError,
   } = useBudget(selectedCompanyId, selectedScenarioId, selectedCostCenterId)
 
   // The staff view rewrites the staff accounts in the database; coming back to the
@@ -408,14 +410,23 @@ export default function BudgetPage() {
             ? 'Skapa ett scenario för att börja budgetera.'
             : 'Välj ett scenario och ett kostnadsställe.'}
         </div>
+      ) : accountsError ? (
+        <div className="max-w-xl mx-auto my-16 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+          <p className="font-medium">Kontoplanen kunde inte läsas</p>
+          <p className="mt-0.5 text-red-700">
+            {/timeout|canceling statement/i.test(accountsError)
+              ? 'Hämtningen tog för lång tid och avbröts. Ladda om sidan, och kontakta en administratör om det upprepas.'
+              : accountsError}
+          </p>
+        </div>
+      ) : accountsLoading || loading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-brand-600" />
+        </div>
       ) : accounts.length === 0 && actualOnlyAccounts.length === 0 ? (
         <div className="text-center py-20 text-gray-400 text-sm">
           Inga budgeterbara konton konfigurerade.{' '}
           <a href="/accounts" className="text-brand-600 underline">Gå till Kontokonfiguration</a>.
-        </div>
-      ) : loading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-brand-600" />
         </div>
       ) : (
         <BudgetMatrix

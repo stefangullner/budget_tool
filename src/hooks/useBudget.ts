@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase, fetchAllRows } from '@/lib/supabase'
+import { supabase, fetchAllRows, fetchAllRowsChecked } from '@/lib/supabase'
 import { comparisonYearFor } from '@/components/ComparisonYearPicker'
 import type { Scenario, Account, AccountConfig, CostCenter, BudgetEntry, ScenarioLock } from '@/types'
 
@@ -37,6 +37,9 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
   const [allAccounts, setAllAccounts] = useState<AccountRow[]>([])
+  const [accountsLoading, setAccountsLoading] = useState(false)
+  /** Set when the chart of accounts could not be read — not the same as "no accounts". */
+  const [accountsError, setAccountsError] = useState<string | null>(null)
   const [entries, setEntries] = useState<Map<string, number>>(new Map())
   const [entryMeta, setEntryMeta] = useState<Map<string, EntryMeta>>(new Map())
   const [userNames, setUserNames] = useState<Map<string, string>>(new Map())
@@ -84,16 +87,22 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
   useEffect(() => {
     if (!companyId) return
     setAllAccounts([])
+    setAccountsError(null)
     setActualIds(new Set())
     setPrevActualIds(new Set())
-    fetchAllRows<AccountRow>((from, to) =>
+    setAccountsLoading(true)
+    fetchAllRowsChecked<AccountRow>((from, to) =>
       supabase
         .from('accounts')
         .select('*, config:account_configs(*)')
         .eq('company_id', companyId)
         .order('account_number')
         .range(from, to),
-    ).then(setAllAccounts)
+    ).then(({ rows, error }) => {
+      setAllAccounts(rows)
+      setAccountsError(error)
+      setAccountsLoading(false)
+    })
   }, [companyId])
 
   /** Accounts the user may enter budget for. */
@@ -490,6 +499,8 @@ export function useBudget(companyId: number | null, scenarioId: number | null, c
     upsertICEntry,
     toggleLock,
     createScenario,
+    accountsLoading,
+    accountsError,
     /** Re-read the budget entries — e.g. after the staff budget rewrote its accounts. */
     reloadEntries: () => {
       if (scenarioId && costCenterId) loadEntries(scenarioId, costCenterId)
