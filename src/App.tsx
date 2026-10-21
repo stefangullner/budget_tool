@@ -1,7 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { HelpProvider } from '@/context/HelpContext'
 import LoginPage from '@/pages/LoginPage'
+import OAuthConsentPage from '@/pages/OAuthConsentPage'
 import SetPasswordPage from '@/pages/SetPasswordPage'
 import DashboardPage from '@/pages/DashboardPage'
 import AccountConfigPage from '@/pages/AccountConfigPage'
@@ -25,6 +26,7 @@ import StaffAdminPage from '@/pages/admin/StaffAdminPage'
 
 export default function App() {
   const { session, loading, needsPasswordSet, clearPasswordSet } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -40,6 +42,12 @@ export default function App() {
 
   if (needsPasswordSet) {
     return <SetPasswordPage onDone={clearPasswordSet} />
+  }
+
+  // OAuth consent for MCP clients (Claude Code etc.): a standalone page, outside the app layout. The login
+  // page above keeps this URL, so after signing in the user lands here with the authorization_id intact.
+  if (location.pathname.replace(/\/+$/, '') === '/oauth/consent') {
+    return <OAuthConsentPage />
   }
 
   return (

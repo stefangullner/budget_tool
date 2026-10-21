@@ -38,23 +38,25 @@ ROLLBACK;
 
 -- 3. Saving still works — the same upsert the matrix does, on one of Robert's
 --    cost centers and an ordinary (non-staff) budgetable account.
---    Expect: INSERT 0 1. Any RLS error here means the write policies broke.
+--    Expect: success — the editor then shows only the set_config row, because
+--    INSERT and ROLLBACK return none. Any RLS error means the write path broke.
+--    Plain lookups, no CTEs: an earlier CTE version of this step was refused
+--    while the identical insert below went through (2026-10-05), so the test,
+--    not the policy, was the problem. Cost center 127 is one of Robert's.
 BEGIN;
 SELECT set_config('request.jwt.claims',
   json_build_object('sub', (SELECT id FROM auth.users WHERE email = 'robert.vikstrom@onvia.se'),
                     'role', 'authenticated')::text, true);
 SET LOCAL ROLE authenticated;
-WITH s AS (SELECT id FROM scenarios WHERE company_id = 4 AND name = 'Budget 2027' LIMIT 1),
-     -- The existing rule, so this step also runs before the migration
-     cc AS (SELECT id FROM cost_centers WHERE company_id = 4 AND user_can_access_company_cost_center(company_id, id) ORDER BY code LIMIT 1),
-     acc AS (
-       SELECT a.id FROM accounts a JOIN account_configs ac ON ac.account_id = a.id
-       WHERE a.company_id = 4 AND ac.is_budgetable AND NOT coalesce(ac.is_intercompany, false)
-         AND a.id NOT IN (SELECT account_id FROM staff_locked_account_ids((SELECT id FROM s)))
-       ORDER BY a.account_number LIMIT 1
-     )
 INSERT INTO budget_entries (scenario_id, account_id, cost_center_id, year, month, amount, counterpart_company_id, updated_by, updated_at)
-SELECT (SELECT id FROM s), (SELECT id FROM acc), (SELECT id FROM cc), 2027, 12, 1, NULL, auth.uid(), now()
+SELECT (SELECT id FROM scenarios WHERE company_id = 4 AND name = 'Budget 2027' LIMIT 1),
+       (SELECT a.id FROM accounts a JOIN account_configs ac ON ac.account_id = a.id
+         WHERE a.company_id = 4 AND ac.is_budgetable AND NOT coalesce(ac.is_intercompany, false)
+           AND a.id NOT IN (SELECT account_id FROM staff_locked_account_ids(
+                 (SELECT id FROM scenarios WHERE company_id = 4 AND name = 'Budget 2027' LIMIT 1)))
+         ORDER BY a.account_number LIMIT 1),
+       (SELECT id FROM cost_centers WHERE company_id = 4 AND code = '127'),
+       2027, 12, 1, NULL, auth.uid(), now()
 ON CONFLICT (scenario_id, account_id, cost_center_id, year, month, counterpart_company_id)
 DO UPDATE SET amount = EXCLUDED.amount;
 ROLLBACK;

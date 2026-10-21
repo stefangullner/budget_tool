@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "onvia-budget": {
+      "type": "http",
+      "url": "https://sjzhrxzyrbtbryypcpor.supabase.co/functions/v1/mcp"
+    }
+  }
+}
